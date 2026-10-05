@@ -1,8 +1,10 @@
-# Fly-In Drones
+*This project has been created as part of the 42 curriculum by asuleime.*
+
+# Fly-in
 
 ## Description
 
-Fly-In routes a fleet of drones from one start hub to one destination through a
+Fly-in routes a fleet of drones from one start hub to one destination through a
 network with limited hub and connection capacities. The objective is to deliver
 all drones in as few discrete turns as possible while respecting simultaneous
 movement, restricted zones, and shared bidirectional connections.
@@ -640,9 +642,9 @@ laptop.
 
 ### AI assistance
 
-- Understanding algorithms to code the greedy and priority-based solvers
+- Understanding pathfinding algorithms and methods used in them
 - Discussing the whole project's design, separation of visualization from core simulation and output
-- Test and benchmark scripts' code
+- Test scripts' code
 - GUI implementation (QT-based GUI)
-- Map profiler code (checking least possible turns for a valid solution)
+- Map profiling and benchmarking code (checking least possible turns for a valid solution)
 - Drafting this README

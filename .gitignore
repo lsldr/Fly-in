@@ -3,7 +3,7 @@ __pycache__/
 *.py[codz]
 *$py.class
 
-# development-related and refreshed folders
+# development-stage and refreshed folders
 records/
 out/
 docs/
