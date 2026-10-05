@@ -1,0 +1,94 @@
+"""Property checks for 100 capacity and transit variations per ladder rung."""
+
+from pathlib import Path
+
+from hypothesis import HealthCheck, given, settings, strategies as st
+import pytest
+
+from joint_oracle import exact_makespan
+from fly_in.parser import Parser
+from fly_in.simulation import Simulation
+from fly_in.solver_factory import SolverFactory
+from fly_in.solvers.base import ConflictDetector, ScheduledSolver
+from fly_in.solvers.prioritized import PriorityBasedSolver
+
+
+@pytest.mark.parametrize("strategy", (
+    "priority", "lns", "pbs", "icbs", "adaptive", "optimal",
+))
+@settings(max_examples=100, deadline=None, derandomize=True,
+          suppress_health_check=[HealthCheck.function_scoped_fixture])
+@given(
+    drones=st.integers(min_value=1, max_value=4),
+    restricted=st.lists(st.booleans(), min_size=3, max_size=3),
+    priority=st.lists(st.booleans(), min_size=3, max_size=3),
+    hubs=st.lists(st.integers(1, 2), min_size=3, max_size=3),
+    links=st.lists(st.integers(1, 2), min_size=4, max_size=4),
+    shortcuts=st.lists(st.booleans(), min_size=2, max_size=2),
+)
+def test_all_rungs_execute_connected_random_topologies(
+    drones: int, restricted: list[bool], priority: list[bool],
+    hubs: list[int], links: list[int], shortcuts: list[bool],
+    tmp_path: Path, strategy: str,
+) -> None:
+    """Check actual simulation capacity, delivery, and LNS monotonicity."""
+    names = ('s', 'a', 'b', 'c', 'g')
+    lines = [f'nb_drones: {drones}', 'start_hub: s 0 0',
+             'end_hub: g 4 0']
+    for index, name in enumerate(names[1:-1]):
+        kind = ('restricted' if restricted[index] else
+                'priority' if priority[index] else 'normal')
+        lines.append(
+            f'hub: {name} {index+1} 0 '
+            f'[zone={kind} max_drones={hubs[index]}]'
+        )
+    for index, (first, second) in enumerate(zip(names, names[1:])):
+        lines.append(
+            f'connection: {first}-{second} '
+            f'[max_link_capacity={links[index]}]'
+        )
+    for enabled, first, second in zip(shortcuts, ('s', 'a'), ('b', 'c')):
+        if enabled:
+            lines.append(f'connection: {first}-{second}')
+    config = Parser().parse_text('\n'.join(lines))
+    floor_simulation = Simulation.from_config(config, PriorityBasedSolver())
+    floor_solver = floor_simulation.solver
+    assert isinstance(floor_solver, PriorityBasedSolver)
+    floor = floor_solver.solve(
+        floor_simulation.network,
+        [drone.id for drone in floor_simulation.drones],
+    )
+    params = ({} if strategy == "optimal" else
+              {"time_budget": 0.010, "max_iter": 10, "node_budget": 80})
+    solver = SolverFactory(records_dir=tmp_path).create(strategy, params)
+    simulation = Simulation.from_config(config, solver)
+    assert isinstance(solver, ScheduledSolver)
+    solver.prepare(simulation.network, simulation.drones)
+    solution = solver.solution
+    assert solution is not None
+    assert solution.objective <= floor.objective
+    assert not ConflictDetector(simulation.network).find(solution.paths)
+    result = simulation.run(max_turns=40)
+    assert result.turns == solution.makespan
+    assert result.metrics.total_path_cost == solution.cost
+    assert all(drone.delivered for drone in simulation.drones)
+    if strategy == "optimal":
+        assert solution.optimal and solution.status == "optimal"
+        assert result.turns == exact_makespan(
+            simulation.network, config.nb_drones,
+        )
+
+
+def test_unreachable_network_reports_controlled_error() -> None:
+    """Disconnected input has an explicit diagnostic before timed search."""
+    config = Parser().parse_text('''nb_drones: 1
+start_hub: s 0 0
+end_hub: g 2 0
+hub: h 1 0
+connection: s-h
+''')
+    simulation = Simulation.from_config(config, PriorityBasedSolver())
+    with pytest.raises(ValueError, match='no accessible route'):
+        solver = simulation.solver
+        assert isinstance(solver, PriorityBasedSolver)
+        solver.prepare(simulation.network, simulation.drones)

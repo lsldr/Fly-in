@@ -1,0 +1,14 @@
+nb_drones: 3
+start_hub: s 0 0
+end_hub: g 4 0
+hub: a 1 0 [zone=priority]
+hub: r 1 1 [zone=restricted max_drones=2]
+hub: merge 3 0 [zone=restricted]
+hub: loop 2 1
+connection: s-a
+connection: s-r [max_link_capacity=2]
+connection: a-merge
+connection: r-merge
+connection: a-loop
+connection: loop-r
+connection: merge-g

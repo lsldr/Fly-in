@@ -1,0 +1,11 @@
+nb_drones: 5
+start_hub: s 0 0 [max_drones=0]
+end_hub: g 3 0 [zone=restricted max_drones=ignored]
+hub: blocked 1 0 [zone=blocked]
+hub: a 1 1 [max_drones=2]
+hub: b 2 1 [max_drones=2]
+connection: s-blocked [max_link_capacity=100]
+connection: blocked-g [max_link_capacity=100]
+connection: s-a [max_link_capacity=2]
+connection: a-b [max_link_capacity=2]
+connection: b-g [max_link_capacity=2]

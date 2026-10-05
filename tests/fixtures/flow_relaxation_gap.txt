@@ -1,0 +1,16 @@
+# Aggregate resource windows admit four turns; joint legal states need five.
+nb_drones: 3
+start_hub: s 0 0
+end_hub: g 5 0
+hub: a 1 0 [zone=restricted max_drones=2]
+hub: b 2 0 [max_drones=1]
+hub: c 3 0 [max_drones=1]
+hub: d 4 0 [zone=restricted max_drones=1]
+connection: a-b [max_link_capacity=2]
+connection: a-c [max_link_capacity=2]
+connection: b-c
+connection: b-g [max_link_capacity=3]
+connection: c-d
+connection: d-g
+connection: s-a
+connection: s-c

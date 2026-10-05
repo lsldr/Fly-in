@@ -1,0 +1,17 @@
+# The preferred s-a-b-g path consumes one edge from each disjoint route.
+# Sending one drone along s-c-b-g and the other along s-a-d-g takes 3 turns.
+# Sequential priority planning instead sends both through a and b in 4.
+nb_drones: 2
+start_hub: s 0 0
+end_hub: g 3 0
+hub: a 1 0 [zone=priority]
+hub: c 1 1
+hub: b 2 0 [zone=priority]
+hub: d 2 1
+connection: s-a
+connection: s-c
+connection: a-b
+connection: a-d
+connection: c-b
+connection: b-g
+connection: d-g
