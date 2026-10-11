@@ -4,9 +4,10 @@ __pycache__/
 *$py.class
 
 # development-stage and refreshed folders
-records/
-out/
+attachments/
 docs/
+out/
+records/
 
 # C extensions
 *.so

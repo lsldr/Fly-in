@@ -125,7 +125,7 @@ class Parser:
                         field = sorted(invalid_fields)[0]
                         raise ConfigParseError(
                             f"line {line_number}: metadata field '{field}' "
-                            "is not valid for a zone"
+                            "is not valid for a start or end hub"
                         )
                     endpoint_zone = self._validate_model(
                         EdgeZoneSpec, zone_values, line_number, "zone"

@@ -142,7 +142,9 @@ class NetworkProfiler:
     """
 
     def __init__(
-        self, network: DroneNetwork, budget: SearchBudget | None = None,
+        self,
+        network: DroneNetwork,
+        budget: SearchBudget | None = None,
     ) -> None:
         """Bind network topology and an optional cooperative search budget."""
         self.network = network
@@ -167,7 +169,7 @@ class NetworkProfiler:
         L+N-1 under arrival-turn connection release. Binary search up to that
         upper bound finds the first M satisfying the aggregate flow relaxation.
         Equality of a valid schedule's makespan and this bound proves optimal
-        makespan, but makes no claim about optimal total path cost.
+        makespan, without the total path cost optimization guarantee.
         """
         self._check_budget()
         if fleet_size < 1:
@@ -190,7 +192,10 @@ class NetworkProfiler:
             self._check_budget()
             middle = (lower + upper) // 2
             achievable = self._capacity_flow(
-                from_start, to_goal, fleet_size, middle,
+                from_start,
+                to_goal,
+                fleet_size,
+                middle,
             )
             if achievable >= fleet_size:
                 upper = middle
@@ -204,12 +209,20 @@ class NetworkProfiler:
             for zone in self.network.zones.values()
         )
         return InstanceProfile(
-            fleet_size, vertices, edges, edges / vertices, bottleneck,
-            restricted / vertices, shortest, lower,
+            fleet_size,
+            vertices,
+            edges,
+            edges / vertices,
+            bottleneck,
+            restricted / vertices,
+            shortest,
+            lower,
         )
 
     def _distances(
-        self, origin: str, reverse: bool = False,
+        self,
+        origin: str,
+        reverse: bool = False,
     ) -> dict[str, int]:
         """Return physical durations from the shared route-score analysis."""
         return {
@@ -218,7 +231,9 @@ class NetworkProfiler:
         }
 
     def route_scores(
-        self, origin: str, reverse: bool = False,
+        self,
+        origin: str,
+        reverse: bool = False,
     ) -> dict[str, tuple[int, int]]:
         """Minimize duration, then entries into non-priority destinations.
 
@@ -233,7 +248,8 @@ class NetworkProfiler:
     def _entry_score(zone: Zone) -> tuple[int, int]:
         """Charge physical entry duration with priority as a secondary tie."""
         return (
-            zone.movement_cost(), int(zone.zone_type is not ZoneType.PRIORITY),
+            zone.movement_cost(),
+            int(zone.zone_type is not ZoneType.PRIORITY),
         )
 
     def _capacity_flow(
@@ -258,7 +274,9 @@ class NetworkProfiler:
             if zone not in (self.network.start, self.network.end):
                 if zone.max_drones is not None:
                     bound = window.capacity(
-                        zone.max_drones, from_start[name], to_goal[name],
+                        zone.max_drones,
+                        from_start[name],
+                        to_goal[name],
                     )
             flow.connect(incoming, outgoing, bound)
 
@@ -276,7 +294,9 @@ class NetworkProfiler:
                 second.movement_cost() - 1 + to_goal[second.name],
             )
             bound = window.capacity(
-                connection.max_link_capacity, earliest, remaining,
+                connection.max_link_capacity,
+                earliest,
+                remaining,
             )
             flow.connect(incoming, outgoing, bound)
             for zone in (first, second):
@@ -286,5 +306,6 @@ class NetworkProfiler:
 
         return flow.maximum(
             vertices[self.network.start.name][1],
-            vertices[self.network.end.name][0], limit,
+            vertices[self.network.end.name][0],
+            limit,
         )
