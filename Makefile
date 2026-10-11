@@ -6,14 +6,24 @@ install:
 run:
 	@uv run python -m fly_in $(ARGS)
 
-gui:
-	@uv run fly-in-gui
-
 debug:
 	@uv run python -m pdb -m fly_in $(ARGS)
 
 benchmark:
 	@uv run python scripts/benchmark_ladder.py $(ARGS)
+
+# Install micromamba if needed: "${SHELL}" <(curl -L micro.mamba.pm/install.sh)
+QT_EXTRA_LIB := $(HOME)/.local/lib/qt-extra
+
+# Creates a link file to the xcb-util-cursor library in a separate micromamba 
+# environment, so that it can be used by PyQt6.
+setup-gui-libs:
+	micromamba create -y -n gui-libs -c conda-forge xcb-util-cursor
+	mkdir -p $(QT_EXTRA_LIB)
+	ln -sf $(HOME)/micromamba/envs/gui-libs/lib/libxcb-cursor.so* $(QT_EXTRA_LIB)/
+
+gui:
+	LD_LIBRARY_PATH="$(QT_EXTRA_LIB)$${LD_LIBRARY_PATH:+:$$LD_LIBRARY_PATH}" uv run fly-in-gui
 
 lint:
 	@uv run flake8 .

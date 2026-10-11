@@ -36,6 +36,7 @@ Abbreviations:
 
 CBS:	Conflict-Based Search
 CLI:	Command-Line Interface
+CT:   Constraint Tree
 GUI:	Graphical User Interface
 ICBS:	Improved Conflict-Based Search
 LNS:	Large Neighborhood Search
