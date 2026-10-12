@@ -1,3 +1,5 @@
+"""Mutable entities and graph structures used by simulation runs."""
+
 from fly_in.realm.entities import Connection, Drone, Zone
 from fly_in.realm.network import DroneNetwork
 

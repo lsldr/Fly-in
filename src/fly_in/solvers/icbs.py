@@ -28,17 +28,36 @@ ConflictClass = Literal['cardinal', 'semi_cardinal', 'non_cardinal']
 
 
 class ConflictAssessment:
-    """Compare a CT parent's makespan bound with its complete split."""
+    """Conflict classification from a parent's bound and complete split.
+
+    Attributes:
+        parent_bound (int): Parent's maximum individual earliest arrival.
+        child_bounds (tuple[int | None, ...]): Feasible child bounds, with
+            None marking a child whose constrained path is infeasible.
+    """
 
     def __init__(
         self, parent_bound: int, child_bounds: Iterable[int | None],
     ) -> None:
-        """Own a repeatable snapshot of all tested child bounds."""
+        """Own a repeatable snapshot of all tested child bounds.
+
+        Args:
+            parent_bound (int): Parent CT node's makespan lower bound.
+            child_bounds (Iterable[int | None]): Bound of each child, or None
+                when that branch has no feasible low-level path.
+        """
         self.parent_bound = parent_bound
         self.child_bounds = tuple(child_bounds)
 
     def classification(self) -> ConflictClass:
-        """Treat bounded-infeasible children as infinite bound increases."""
+        """Treat infeasible children as infinite bound increases.
+
+        Returns:
+            ConflictClass: Cardinal, semi-cardinal, or non-cardinal class.
+
+        Raises:
+            ValueError: If no child bound was supplied.
+        """
         increases = [bound is None or bound > self.parent_bound
                      for bound in self.child_bounds]
         if not increases:
@@ -52,25 +71,45 @@ class ConflictAssessment:
 
 @dataclass(frozen=True)
 class _Node:
-    """Constraint set and individually earliest consistent candidate paths."""
+    """Constraint set and individually earliest consistent candidate paths.
+
+    Attributes:
+        constraints (frozenset[Constraint]): Restrictions defining this node.
+        paths (dict[str, TimedPath]): Individually earliest consistent paths.
+    """
 
     constraints: frozenset[Constraint]
     paths: dict[str, TimedPath]
 
     @property
     def bound(self) -> int:
-        """Return the admissible lower bound on this subtree's makespan."""
+        """Return the admissible lower bound on this subtree's makespan.
+
+        Returns:
+            int: Latest arrival among the node's individually earliest paths.
+        """
         return max((path.arrival for path in self.paths.values()), default=0)
 
     @property
     def cost(self) -> int:
-        """Return physical cost as a deterministic secondary queue key."""
+        """Return physical cost as a deterministic secondary queue key.
+
+        Returns:
+            int: Sum of traversal durations across the node's paths.
+        """
         return sum(path.cost for path in self.paths.values())
 
 
 @dataclass(frozen=True)
 class _Split:
-    """One tested conflict and all feasible children of its complete split."""
+    """One tested conflict and all feasible children of its complete split.
+
+    Attributes:
+        conflict (Conflict): Violation branched on.
+        classification (ConflictClass): Bound-based conflict class.
+        children (tuple[_Node, ...]): Feasible branches from excluding each
+            involved agent's resource use.
+    """
 
     conflict: Conflict
     classification: ConflictClass
@@ -78,18 +117,34 @@ class _Split:
 
 
 class ICBSSolver(ScheduledSolver):
-    """Search a makespan-ordered constraint tree, retaining a feasible floor.
+    """Makespan-ordered constraint-tree search with a feasible floor.
 
     Conflict prioritization and helpful bypasses follow ICBS. Meta-agent
     merging is not enabled. Returned optimality concerns makespan alone;
     timeout and node-limit exits retain a feasible, uncertified incumbent.
+
+    Attributes:
+        time_budget (float | None): Optional improvement budget in seconds.
+        node_budget (int | None): Optional CT expansion limit.
+        proof_required (bool): Whether interruption must raise instead of
+            returning an unproved floor.
     """
 
     def __init__(
         self, time_budget: float | None = 1.0,
         node_budget: int | None = 10000,
     ) -> None:
-        """Set a cooperative improvement deadline and CT expansion limit."""
+        """Set a cooperative deadline and CT expansion limit.
+
+        Args:
+            time_budget (float | None): Nonnegative seconds, or None for no
+                solver-local time limit.
+            node_budget (int | None): Nonnegative CT node count, or None for
+                no solver-local node limit.
+
+        Raises:
+            ValueError: If either supplied limit is negative or non-finite.
+        """
         super().__init__()
         if time_budget is not None and (
             not isfinite(time_budget) or time_budget < 0
@@ -105,7 +160,24 @@ class ICBSSolver(ScheduledSolver):
         self, network: DroneNetwork, drone_ids: list[str],
         initial: Solution | None = None, budget: SearchBudget | None = None,
     ) -> Solution:
-        """Return the best feasible schedule with honest proof status."""
+        """Return the best feasible schedule with honest proof status.
+
+        Args:
+            network (DroneNetwork): Topology to plan.
+            drone_ids (list[str]): Fleet identifiers to schedule.
+            initial (Solution | None): Optional feasible incumbent.
+            budget (SearchBudget | None): Parent deadline and cancellation.
+
+        Returns:
+            Solution: Best feasible result; status records whether search
+                proved its makespan optimal.
+
+        Raises:
+            ValueError: If the fleet or incumbent is invalid.
+            PlanningCancelled: If cancellation is requested.
+            SearchTimeout: If no feasible floor exists when a required proof
+                budget expires.
+        """
         parent = budget or SearchBudget()
         limits = parent.child(self.time_budget)
         incumbent: Solution | None = None
@@ -159,7 +231,22 @@ class ICBSSolver(ScheduledSolver):
         self, network: DroneNetwork, engine: SpaceTimeAStar, root: _Node,
         incumbent: Solution, budget: SearchBudget,
     ) -> Solution:
-        """Maintain complete CT branching under an incumbent makespan bound."""
+        """Maintain complete CT branching under an incumbent makespan bound.
+
+        Args:
+            network (DroneNetwork): Topology used for conflict detection.
+            engine (SpaceTimeAStar): Low-level constrained path search.
+            root (_Node): Initial conflict-tree node.
+            incumbent (Solution): Feasible upper bound to improve or prove.
+            budget (SearchBudget): Cooperative limits for the search.
+
+        Returns:
+            Solution: Updated incumbent with proof or cutoff status.
+
+        Raises:
+            PlanningCancelled: If cancellation is requested.
+            SearchTimeout: If the budget deadline elapses.
+        """
         serial = count()
         pending = [(root.bound, root.cost, next(serial), root)]
         visited = {root.constraints}
@@ -212,7 +299,15 @@ class ICBSSolver(ScheduledSolver):
 
     @staticmethod
     def _proved(incumbent: Solution, reason: str) -> Solution:
-        """Attach an explicit makespan-only optimality certificate."""
+        """Attach an explicit makespan-only optimality certificate.
+
+        Args:
+            incumbent (Solution): Feasible result to mark as proved.
+            reason (str): Search condition establishing the certificate.
+
+        Returns:
+            Solution: The same solution, marked optimal for makespan.
+        """
         incumbent.optimal = True
         incumbent.status = 'optimal'
         incumbent.reason = f'makespan proved by {reason}'
@@ -222,7 +317,23 @@ class ICBSSolver(ScheduledSolver):
         self, node: _Node, conflicts: list[Conflict],
         engine: SpaceTimeAStar, horizon: int, budget: SearchBudget,
     ) -> _Split:
-        """Probe complete splits and prefer cardinal, then semi-cardinal."""
+        """Probe complete splits and prefer cardinal, then semi-cardinal.
+
+        Args:
+            node (_Node): Conflict-tree node being branched.
+            conflicts (list[Conflict]): Ordered violations in the node.
+            engine (SpaceTimeAStar): Constrained path search engine.
+            horizon (int): Current incumbent makespan limit.
+            budget (SearchBudget): Cooperative interruption controls.
+
+        Returns:
+            _Split: Preferred fully probed split and its feasible children.
+
+        Raises:
+            ValueError: If called with no conflicts.
+            PlanningCancelled: If cancellation is requested.
+            SearchTimeout: If the budget deadline elapses.
+        """
         preferred: _Split | None = None
         rank = {'cardinal': 0, 'semi_cardinal': 1, 'non_cardinal': 2}
         for conflict in conflicts:
@@ -262,7 +373,23 @@ class ICBSSolver(ScheduledSolver):
         network: DroneNetwork, node: _Node, conflicts: list[Conflict],
         split: _Split, budget: SearchBudget,
     ) -> _Node | None:
-        """Adopt helpful equal-arrival paths under parent constraints."""
+        """Adopt helpful equal-arrival paths under parent constraints.
+
+        Args:
+            network (DroneNetwork): Topology used to count conflicts.
+            node (_Node): Parent whose constraints remain in effect.
+            conflicts (list[Conflict]): Parent's current conflict list.
+            split (_Split): Tested split whose children may offer a bypass.
+            budget (SearchBudget): Cooperative interruption controls.
+
+        Returns:
+            _Node | None: Parent-constraint node with fewer conflicts, or None
+                when no helpful equal-arrival, equal-cost path exists.
+
+        Raises:
+            PlanningCancelled: If cancellation is requested.
+            SearchTimeout: If the budget deadline elapses.
+        """
         if split.classification == 'cardinal':
             return None
         for child in split.children:

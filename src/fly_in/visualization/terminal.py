@@ -10,7 +10,14 @@ from fly_in.visualization.terminal_scene import TerminalScene
 
 
 class TerminalVisualizer:
-    """Render movement lines and network capacity state in the terminal."""
+    """Terminal output renderer for movement and network capacity state.
+
+    Attributes:
+        display (str): Output style: visual, compact, full, or moves.
+        config (MapConfig): Topology supplying colors and route endpoints.
+        console (Console): Rich console used for formatted output.
+        scene (TerminalScene): Renderer for the coordinate-based network.
+    """
 
     _TYPE_COLORS = {
         ZoneType.NORMAL: "#7aa2f7",
@@ -23,7 +30,17 @@ class TerminalVisualizer:
         self, config: MapConfig, no_color: bool = False,
         display: str = "visual",
     ) -> None:
-        """Create a renderer using visual properties from ``config``."""
+        """Create a renderer using visual properties from ``config``.
+
+        Args:
+            config (MapConfig): Map whose zones and links are rendered.
+            no_color (bool): Disable color markup in terminal output.
+            display (str): Output mode: ``visual``, ``compact``, ``full``, or
+                ``moves``.
+
+        Raises:
+            ValueError: If ``display`` is not a supported output mode.
+        """
         if display not in {"visual", "compact", "full", "moves"}:
             raise ValueError("display must be visual, compact, full, or moves")
         self.display = display
@@ -36,7 +53,13 @@ class TerminalVisualizer:
         }
 
     def render_turn(self, simulation: Simulation, moves: list[str]) -> None:
-        """Print one movement line followed by the current network state."""
+        """Print one movement line and the selected network summary.
+
+        Args:
+            simulation (Simulation): Post-turn state used for counts and
+                traffic.
+            moves (list[str]): Movement tokens produced for this turn.
+        """
         if self.display == "moves":
             print(" ".join(moves))
             return
@@ -68,7 +91,15 @@ class TerminalVisualizer:
             )
 
     def _movement_color(self, target: str) -> str:
-        """Find the target zone's configured or default display color."""
+        """Find the target zone's configured or default display color.
+
+        Args:
+            target (str): Zone name or canonical connection identifier.
+
+        Returns:
+            str: Rich color string for the zone or a restricted route endpoint;
+            white when the target does not identify known topology.
+        """
         zone = self._zones.get(target)
         if zone is None:
             connection = next(
@@ -97,7 +128,15 @@ class TerminalVisualizer:
         return self._zone_color(zone)
 
     def _state_line(self, simulation: Simulation) -> Text:
-        """Build a colored summary of zone occupancy and link traffic."""
+        """Build a colored summary of zone occupancy and link traffic.
+
+        Args:
+            simulation (Simulation): State whose current zone counts and link
+                traffic are summarized.
+
+        Returns:
+            Text: Rich summary of zone occupancy and link capacity use.
+        """
         occupancy: dict[str, int] = {}
         for drone in simulation.drones:
             if drone.delivered or drone.in_transit is not None:
@@ -136,7 +175,15 @@ class TerminalVisualizer:
 
     @classmethod
     def _zone_color(cls, zone: ZoneSpec) -> str:
-        """Return a valid configured color or a type-based fallback."""
+        """Return a valid configured color or a type-based fallback.
+
+        Args:
+            zone (ZoneSpec): Zone whose explicit color or semantic type sets
+                the style.
+
+        Returns:
+            str: Color string accepted by Rich.
+        """
         if zone.color:
             try:
                 Color.parse(zone.color)

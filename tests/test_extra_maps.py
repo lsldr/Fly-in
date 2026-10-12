@@ -19,7 +19,11 @@ from fly_in.solvers.optimal import OptimalSolver, UnprovedPlanningError
 
 @pytest.mark.parametrize("name", SMALL_NAMES)
 def test_adversarial_map_matches_joint_oracle(name: str) -> None:
-    """Use exhaustive legal-state enumeration, then replay actual rows."""
+    """Compare the default solver with joint enumeration and output replay.
+
+    Args:
+        name (str): Parametrized small fixture basename under maps/extra.
+    """
     config = Parser().parse(EXTRA / name)
     expected = exact_makespan(
         DroneNetwork.from_config(config), config.nb_drones,
@@ -39,7 +43,12 @@ def test_adversarial_map_matches_joint_oracle(name: str) -> None:
 def test_full_envelope_map_attains_independent_cut_bound(
     case: AnalyticCase,
 ) -> None:
-    """One fewer turn cannot fit the fleet; legal replay attains the bound."""
+    """Verify legal delivery at the first horizon that can fit the fleet.
+
+    Args:
+        case (AnalyticCase): Parametrized large fixture and its independent
+            cut-window bound.
+    """
     config = Parser().parse(EXTRA / case.filename)
     assert (config.nb_drones, len(config.zones) + 2,
             len(config.connections)) == (100, 200, 300)
@@ -60,7 +69,11 @@ def test_full_envelope_map_attains_independent_cut_bound(
 
 @pytest.mark.parametrize("case", LARGE_CASES, ids=lambda case: case.filename)
 def test_stress_map_retains_its_analytic_topology(case: AnalyticCase) -> None:
-    """Fixture edits must not silently invalidate their mathematical proofs."""
+    """Compare stored fixture text with the construction used by its proof.
+
+    Args:
+        case (AnalyticCase): Parametrized fixture to regenerate in memory.
+    """
     text = (EXTRA / case.filename).read_text(encoding="utf-8")
     assert text == large_map(case)
 
@@ -69,7 +82,12 @@ def test_stress_map_retains_its_analytic_topology(case: AnalyticCase) -> None:
 def test_catalog_minimum_and_output_independently_replayed(
     name: str, minimum: int,
 ) -> None:
-    """Guard documented minima and physical legality for all supplied maps."""
+    """Check catalog minima and physical cost through independent replay.
+
+    Args:
+        name (str): Parametrized map path relative to maps.
+        minimum (int): Independently reviewed optimal completion turn.
+    """
     config = Parser().parse(ROOT / "maps" / name)
     solver = SolverFactory().create(DEFAULT_SOLVER)
     result = Simulation.from_config(config, solver).run(max_turns=minimum + 1)
@@ -91,7 +109,11 @@ def test_extra_catalog_has_only_reviewed_fixtures() -> None:
 
 @pytest.mark.parametrize("name", SMALL_NAMES)
 def test_reversing_declarations_preserves_optimum(name: str) -> None:
-    """Tie-breaking must not turn declaration order into a worse schedule."""
+    """Verify declaration order changes preserve legal optimal delivery.
+
+    Args:
+        name (str): Parametrized small fixture basename under maps/extra.
+    """
     text = (EXTRA / name).read_text(encoding="utf-8")
     rows = text.splitlines()
     headers = [row for row in rows
@@ -110,7 +132,12 @@ def test_reversing_declarations_preserves_optimum(name: str) -> None:
 
 
 def crossing_witness() -> Solution:
-    """Construct two disjoint three-step routes for fifty drones apiece."""
+    """Construct two disjoint three-step routes for fifty drones apiece.
+
+    Returns:
+        Solution: Feasible 100-drone schedule for HARD_CASE with makespan 3
+        and physical cost 300. The construction does not set a proof flag.
+    """
     paths = {}
     for index in range(1, 101):
         agent = f"D{index}"
@@ -147,7 +174,12 @@ def test_mass_priority_crossing_has_constructive_three_turn_optimum() -> None:
 
 
 def test_mass_priority_crossing_cutoff_keeps_proof_honest() -> None:
-    """Wide capacity splits must keep proof interruption honest and atomic."""
+    """Check a node cutoff leaves execution untouched and proof explicit.
+
+    Accept either a certified three-turn solution or an unproved incumbent
+    reported by UnprovedPlanningError. In both cases, preparation must leave
+    the simulation at turn zero with no movement history.
+    """
     config = Parser().parse(EXTRA / HARD_CASE.filename)
     solver = OptimalSolver(node_budget=1)
     simulation = Simulation.from_config(config, solver)

@@ -1,0 +1,17 @@
+# Each endpoint belongs to a cycle; no edge joins the two components.
+# Reachability checks must terminate even when revisiting hubs is possible.
+nb_drones: 5
+
+start_hub: start 0 0 [color=green]
+hub: left_a 1 1
+hub: left_b 1 -1
+hub: right_a 4 1
+hub: right_b 4 -1
+end_hub: goal 5 0 [color=red]
+
+connection: start-left_a
+connection: left_a-left_b
+connection: left_b-start
+connection: goal-right_a
+connection: right_a-right_b
+connection: right_b-goal

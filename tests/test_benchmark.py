@@ -15,7 +15,11 @@ SOURCE = 'nb_drones: 1\nstart_hub: s 0 0\nend_hub: g 1 0\nconnection: s-g'
 def test_benchmark_discovers_only_text_and_records_failures(
     tmp_path: Path,
 ) -> None:
-    """One malformed map does not prevent benchmarking another map."""
+    """Continue the catalog after a malformed map and save a report.
+
+    Args:
+        tmp_path (Path): Isolated catalog and report root.
+    """
     root = tmp_path / 'maps'
     root.mkdir()
     (root / 'good.txt').write_text(SOURCE)
@@ -35,7 +39,11 @@ def test_benchmark_discovers_only_text_and_records_failures(
 
 
 def test_challenger_requires_strictly_better_than_45(tmp_path: Path) -> None:
-    """Matching the challenger reference does not satisfy its target."""
+    """Require a challenger result strictly below its reference target.
+
+    Args:
+        tmp_path (Path): Isolated catalog and report root.
+    """
     root = tmp_path / 'maps'
     (root / 'challenger').mkdir(parents=True)
     (root / 'challenger' / '01_the_impossible_dream.txt').write_text(SOURCE)

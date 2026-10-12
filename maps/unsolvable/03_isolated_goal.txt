@@ -1,0 +1,12 @@
+# Drones can explore a chain and a dead end, but the goal is isolated.
+nb_drones: 4
+
+start_hub: start 0 0 [color=green]
+hub: first 1 0
+hub: second 2 0
+hub: dead_end 2 1
+end_hub: goal 4 0 [color=red]
+
+connection: start-first
+connection: first-second
+connection: second-dead_end

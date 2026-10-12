@@ -5,7 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from fly_in.cli import CliApplication, main
+from fly_in.__main__ import main
+from fly_in.cli import CliApplication
 from fly_in.solver_factory import SolverFactory
 
 
@@ -17,7 +18,11 @@ connection: start-goal
 
 
 def test_select_nested_maps_rejects_zero_and_negative(tmp_path: Path) -> None:
-    """Menu indices are one-based even when maps are nested."""
+    """Keep menu indices one-based when maps are nested.
+
+    Args:
+        tmp_path (Path): Temporary root containing map files.
+    """
     folder = tmp_path / "easy"
     folder.mkdir()
     first = folder / "a.txt"
@@ -36,7 +41,11 @@ def test_noninteractive_missing_map_is_usage_error() -> None:
 
 
 def test_validation_skips_gui(tmp_path: Path) -> None:
-    """Validation takes precedence over the rendering mode."""
+    """Validate a map without launching the requested GUI.
+
+    Args:
+        tmp_path (Path): Temporary directory for the valid map.
+    """
     path = tmp_path / "map.txt"
     path.write_text(MAP)
     with patch("fly_in.cli.CliApplication.launch_gui") as launch:
@@ -45,7 +54,11 @@ def test_validation_skips_gui(tmp_path: Path) -> None:
 
 
 def test_gui_receives_selected_solver_and_directories(tmp_path: Path) -> None:
-    """The CLI forwards configuration without importing Qt in terminal mode."""
+    """Forward solver and directory options to the GUI launcher.
+
+    Args:
+        tmp_path (Path): Shared map, output, and records directory.
+    """
     path = tmp_path / "map.txt"
     path.write_text(MAP)
     with patch("fly_in.cli.CliApplication.launch_gui") as launch:
@@ -58,7 +71,11 @@ def test_gui_receives_selected_solver_and_directories(tmp_path: Path) -> None:
 
 
 def test_interactive_map_then_mode(tmp_path: Path) -> None:
-    """No-argument use prompts for both a map and playback mode."""
+    """Prompt for a map and then a playback mode in interactive use.
+
+    Args:
+        tmp_path (Path): Temporary root containing the selectable map.
+    """
     path = tmp_path / "map.txt"
     path.write_text(MAP)
     with patch("sys.stdin.isatty", return_value=True):

@@ -24,11 +24,23 @@ class Script:
 
     @property
     def has_pending_actions(self) -> bool:
-        """Expose future rows so a legal initial wait is not a deadlock."""
+        """Whether a scripted action row remains.
+
+        Returns:
+            bool: ``True`` while future rows remain, allowing planned waits.
+        """
         return bool(self.rows)
 
     def plan(self, network: DroneNetwork, drones: list[Drone]) -> Schedule:
-        """Consume the next row."""
+        """Consume and return the next scripted movement row.
+
+        Args:
+            network (DroneNetwork): Network being simulated; unused here.
+            drones (list[Drone]): Current fleet; unused by this fixed script.
+
+        Returns:
+            Schedule: Next action row, or one empty row after exhaustion.
+        """
         return [self.rows.pop(0)] if self.rows else [[]]
 
 
@@ -204,7 +216,14 @@ connection: b-g
 
 
 def _generated_map(case: int) -> str:
-    """Reproduce one of the original thirty maps without changing its seed."""
+    """Reproduce one of thirty generated maps without changing its seed.
+
+    Args:
+        case (int): Case number used with the test's fixed generator seed.
+
+    Returns:
+        str: Generated map text.
+    """
     generator = random.Random(52)
     names = ['s', 'a', 'b', 'c', 'd', 'g']
     for _ in range(case + 1):
@@ -231,7 +250,12 @@ def _generated_map(case: int) -> str:
 def test_generated_networks_preserve_turn_invariants(
     solver_name: str, case: int,
 ) -> None:
-    """Report each original topology/solver as a separate pytest case."""
+    """Check invariants for each original topology and strategy case.
+
+    Args:
+        solver_name (str): Registered solver strategy under test.
+        case (int): Generated map case number.
+    """
     solver = (PriorityBasedSolver() if solver_name == 'priority'
               else GreedySolver())
     sim = Simulation.from_config(Parser().parse_text(_generated_map(case)),
@@ -280,6 +304,11 @@ def test_reachability_precheck_observes_cancellation() -> None:
     calls = 0
 
     def cancelled() -> bool:
+        """Signal cancellation on the second topology-check poll.
+
+        Returns:
+            bool: Whether the configured cancellation point was reached.
+        """
         nonlocal calls
         calls += 1
         return calls >= 2

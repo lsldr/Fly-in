@@ -26,7 +26,16 @@ connection: restricted-goal
 
 
 def wait_for(app: QApplication, predicate: Callable[[], bool]) -> None:
-    """Process queued worker results with a bounded wait."""
+    """Process queued events until a condition succeeds or five seconds pass.
+
+    Args:
+        app (QApplication): QApplication whose event queue should be processed.
+        predicate (Callable[[], bool]): Zero-argument condition checked between
+            event iterations.
+
+    Raises:
+        AssertionError: If the condition remains false at the deadline.
+    """
     deadline = monotonic() + 5
     while not predicate() and monotonic() < deadline:
         app.processEvents()
@@ -35,7 +44,16 @@ def wait_for(app: QApplication, predicate: Callable[[], bool]) -> None:
 
 
 def make_window(tmp_path: Path, animate: bool = False) -> MainWindow:
-    """Create a window using isolated map and artifact directories."""
+    """Create a window with a simple map and temporary artifact paths.
+
+    Args:
+        tmp_path (Path): Pytest temporary directory used for map and outputs.
+        animate (bool): Whether turn transitions should use timed
+            interpolation.
+
+        Returns:
+            MainWindow: Window using temporary map and output paths.
+    """
     root = tmp_path / "maps"
     root.mkdir(exist_ok=True)
     path = root / "simple.txt"
@@ -47,7 +65,12 @@ def make_window(tmp_path: Path, animate: bool = False) -> MainWindow:
 
 
 def get_app() -> QApplication:
-    """Keep rendering offscreen without launching a desktop window."""
+    """Return a QApplication configured for headless rendering.
+
+    Returns:
+        QApplication: Existing QApplication or a newly created offscreen
+            instance.
+    """
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     app = QApplication.instance()
     return app if isinstance(app, QApplication) else QApplication([])
@@ -56,7 +79,11 @@ def get_app() -> QApplication:
 def test_loaded_gui_map_is_paused_and_saves_both_outputs(
     tmp_path: Path,
 ) -> None:
-    """Load is paused, Step advances once, completion persists once."""
+    """Check paused loading, single-step progress, and one-time persistence.
+
+    Args:
+        tmp_path (Path): Pytest temporary directory for map and run artifacts.
+    """
     app = get_app()
     window = make_window(tmp_path)
     wait_for(app, lambda: window._ready)
@@ -86,7 +113,11 @@ def test_loaded_gui_map_is_paused_and_saves_both_outputs(
 def test_adaptive_worker_preserves_parameters_and_logs_once(
     tmp_path: Path,
 ) -> None:
-    """The new portfolio prepares offscreen and survives a GUI reset."""
+    """Check adaptive options and run logging across a reset.
+
+    Args:
+        tmp_path (Path): Pytest temporary directory for map and solver records.
+    """
     app = get_app()
     root = tmp_path / 'maps'
     root.mkdir()
@@ -118,7 +149,11 @@ def test_adaptive_worker_preserves_parameters_and_logs_once(
 
 
 def test_speed_slider_right_increases_speed(tmp_path: Path) -> None:
-    """Keep timing bounds/default while reversing the visible slider scale."""
+    """Check slider bounds, default duration, and reversed visual direction.
+
+    Args:
+        tmp_path (Path): Pytest temporary directory for the fixture map.
+    """
     app = get_app()
     window = make_window(tmp_path)
     window.show()
@@ -149,7 +184,11 @@ def test_speed_slider_right_increases_speed(tmp_path: Path) -> None:
 
 
 def test_pause_resume_and_reset_cancel_animation(tmp_path: Path) -> None:
-    """Pausing freezes the active turn; reset discards old callbacks."""
+    """Check pause/resume state and rejection of callbacks after reset.
+
+    Args:
+        tmp_path (Path): Pytest temporary directory for map and artifacts.
+    """
     app = get_app()
     window = make_window(tmp_path, animate=True)
     wait_for(app, lambda: window._ready)
@@ -171,7 +210,11 @@ def test_pause_resume_and_reset_cancel_animation(tmp_path: Path) -> None:
 
 
 def test_reset_preserves_solver_and_loaded_source(tmp_path: Path) -> None:
-    """Reset does not reread or reparse a deleted map file."""
+    """Check reset uses loaded source bytes after the map file is deleted.
+
+    Args:
+        tmp_path (Path): Pytest temporary directory containing the source map.
+    """
     app = get_app()
     window = make_window(tmp_path)
     wait_for(app, lambda: window._ready)
@@ -188,7 +231,11 @@ def test_reset_preserves_solver_and_loaded_source(tmp_path: Path) -> None:
 
 
 def test_reload_clears_session_and_stale_results(tmp_path: Path) -> None:
-    """Replacing a library invalidates pending worker and timer callbacks."""
+    """Check reload clears state and rejects a result from the old generation.
+
+    Args:
+        tmp_path (Path): Pytest temporary directory containing the map library.
+    """
     app = get_app()
     window = make_window(tmp_path)
     wait_for(app, lambda: window._ready)
@@ -204,7 +251,11 @@ def test_reload_clears_session_and_stale_results(tmp_path: Path) -> None:
 
 
 def test_map_replacement_during_planning(tmp_path: Path) -> None:
-    """Only the latest generation can become ready."""
+    """Check that replacing a planning job leaves only the latest run ready.
+
+    Args:
+        tmp_path (Path): Pytest temporary directory containing the source map.
+    """
     app = get_app()
     window = make_window(tmp_path)
     first_generation = window._generation
@@ -217,7 +268,11 @@ def test_map_replacement_during_planning(tmp_path: Path) -> None:
 
 
 def test_failed_planning_leaves_reset_available(tmp_path: Path) -> None:
-    """Unreachable maps stop cleanly and save a partial failure record."""
+    """Check unreachable topology records failure while leaving reset enabled.
+
+    Args:
+        tmp_path (Path): Pytest temporary directory for map and run artifacts.
+    """
     app = get_app()
     root = tmp_path / "maps"
     root.mkdir()
@@ -237,7 +292,11 @@ def test_failed_planning_leaves_reset_available(tmp_path: Path) -> None:
 
 
 def test_paused_turn_inspection_and_single_step(tmp_path: Path) -> None:
-    """Inspection keeps the displayed turn; Step finishes a paused turn."""
+    """Check inspection follows a completed turn after stepping from pause.
+
+    Args:
+        tmp_path (Path): Pytest temporary directory for map and run artifacts.
+    """
     app = get_app()
     window = make_window(tmp_path, animate=True)
     wait_for(app, lambda: window._ready)

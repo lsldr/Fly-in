@@ -9,7 +9,15 @@ from PySide6.QtWidgets import QApplication
 
 @pytest.fixture
 def app() -> Iterator[QApplication]:
-    """Keep Qt alive while exercising connected signals and windows."""
+    """Keep a shared Qt application alive for signal and window tests.
+
+    If you have not set QT_QPA_PLATFORM, select the offscreen platform before
+    creating the application. Reuse an existing QApplication when available,
+    and process queued events when the fixture is released.
+
+    Yields:
+        QApplication: Application instance shared with the test's widgets.
+    """
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     existing = QApplication.instance()
     application = (existing if isinstance(existing, QApplication)

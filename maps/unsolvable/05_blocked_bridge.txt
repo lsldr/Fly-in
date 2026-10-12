@@ -1,0 +1,14 @@
+# The graph is connected, but its only start-to-goal route is inaccessible.
+# This tests traversable reachability rather than structural disconnection.
+nb_drones: 2
+
+start_hub: start 0 0 [color=green]
+hub: approach 1 0
+hub: barrier 2 0 [zone=blocked color=black]
+hub: exit 3 0
+end_hub: goal 4 0 [color=red]
+
+connection: start-approach
+connection: approach-barrier
+connection: barrier-exit
+connection: exit-goal

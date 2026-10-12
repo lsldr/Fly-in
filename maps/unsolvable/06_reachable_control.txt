@@ -1,0 +1,10 @@
+# Solvable control: an unrelated isolated hub must not invalidate the map.
+nb_drones: 2
+
+start_hub: start 0 0 [color=green]
+hub: middle 1 0
+hub: spare 1 2
+end_hub: goal 2 0 [color=red]
+
+connection: start-middle
+connection: middle-goal

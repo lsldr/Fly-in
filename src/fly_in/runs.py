@@ -18,14 +18,35 @@ RunStatus = Literal["completed", "failed", "cancelled"]
 
 @dataclass(frozen=True)
 class RunArtifacts:
-    """Files written once when a run ends."""
+    """Paths to files written when a run ends.
+
+    Attributes:
+        record_path (Path): JSON provenance record path.
+        output_path (Path | None): Movement output path for completed runs;
+            ``None`` for failed or cancelled runs.
+    """
 
     record_path: Path
     output_path: Path | None
 
 
 class RunSession:
-    """Capture immutable source provenance and finalize a run idempotently."""
+    """Run record state with source provenance and idempotent finalization.
+
+    Attributes:
+        map_path (Path): Resolved source map path.
+        map_root (Path): Resolved root for preserving map categories.
+        output_root (Path): Resolved successful-output directory.
+        records_root (Path): Resolved record directory.
+        solver_name (str): Selected strategy name.
+        solver_parameters (dict[str, object]): Copied strategy settings.
+        run_id (str): Unique identifier generated for this session.
+        timestamp (datetime): UTC time captured when the session starts.
+        map_hash (str): SHA-256 fingerprint of the source map bytes.
+        planning_duration_seconds (float): Time spent in planner preparation.
+        planning_provenance (PlanningProvenance | None): Captured planner
+            evidence, if preparation has completed or failed.
+    """
 
     def __init__(
         self,
@@ -37,7 +58,22 @@ class RunSession:
         solver_parameters: Mapping[str, object] | None = None,
         source_bytes: bytes | None = None,
     ) -> None:
-        """Read the source fingerprint before simulation begins."""
+        """Capture source identity and settings before simulation begins.
+
+        Args:
+            map_path (str | Path): Source map path recorded with the run.
+            solver_name (str): Selected strategy name.
+            map_root (str | Path): Root used to place categorized outputs.
+            output_root (str | Path): Directory for successful movement output.
+            records_root (str | Path): Directory for run JSON records.
+            solver_parameters (Mapping[str, object] | None): Solver settings
+                copied into the record.
+            source_bytes (bytes | None): Optional source snapshot to hash
+                instead of rereading ``map_path``.
+
+        Raises:
+            OSError: If the map must be read and cannot be accessed.
+        """
         self.map_path = Path(map_path).resolve()
         self.map_root = Path(map_root).resolve()
         self.output_root = Path(output_root).resolve()
@@ -59,7 +95,21 @@ class RunSession:
         status: RunStatus = "completed",
         error: str | None = None,
     ) -> RunArtifacts:
-        """Save a record; only completed runs replace movement output."""
+        """Save a record and write movement output for completed runs.
+
+        Args:
+            simulation (Simulation): Run state and collected history.
+            status (RunStatus): Completion, failure, or cancellation state.
+            error (str | None): Optional failure or cancellation detail.
+
+        Returns:
+            RunArtifacts: Paths written by the first finalization call. Later
+                calls return the same artifacts without writing again.
+
+        Raises:
+            ValueError: If a run is marked completed before all drones arrive.
+            OSError: If an output or record file cannot be written.
+        """
         if self._artifacts is not None:
             return self._artifacts
         if status == "completed" and not all(

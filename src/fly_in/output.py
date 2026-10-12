@@ -9,14 +9,31 @@ from fly_in.solvers.protocol import Schedule
 
 
 class AtomicFileWriter:
-    """Own one target and preserve its prior contents until replacement."""
+    """Atomic text-file writer for one target path.
+
+    Attributes:
+        path (Path): Destination replaced after its new contents are written.
+    """
 
     def __init__(self, path: Path) -> None:
-        """Bind the target whose temporary files share its filesystem."""
+        """Bind a target whose temporary file will share its filesystem.
+
+        Args:
+            path (Path): Destination replaced after complete content is
+                written and flushed.
+        """
         self.path = path
 
     def write(self, content: str) -> None:
-        """Replace the UTF-8 target after writing its complete new contents."""
+        """Atomically replace the UTF-8 target with complete new contents.
+
+        Args:
+            content (str): Text to write before replacing the destination.
+
+        Raises:
+            OSError: If the destination cannot be created, written, flushed,
+                or replaced.
+        """
         path = self.path
         path.parent.mkdir(parents=True, exist_ok=True)
         temporary: Path | None = None
@@ -40,10 +57,18 @@ class AtomicFileWriter:
 
 
 class OutputWriter:
-    """Write one movement file per source map, preserving categories."""
+    """Movement-file writer that preserves source map categories.
+
+    Attributes:
+        output_root (Path): Base directory for all movement output files.
+    """
 
     def __init__(self, output_root: str | Path = "out") -> None:
-        """Create a writer rooted at the requested directory."""
+        """Create a writer rooted at the requested directory.
+
+        Args:
+            output_root (str | Path): Base directory for movement files.
+        """
         self.output_root = Path(output_root)
 
     def write(
@@ -52,7 +77,22 @@ class OutputWriter:
         history: Schedule,
         map_root: str | Path = "maps",
     ) -> Path:
-        """Atomically overwrite movement output after successful execution."""
+        """Write one map's movement history as an atomic text file.
+
+        Maps inside ``map_root`` keep their relative directory structure.
+        External maps are placed under a stable hash directory.
+
+        Args:
+            map_path (str | Path): Source map whose output is being written.
+            history (Schedule): Movement events grouped by simulation turn.
+            map_root (str | Path): Root used to preserve map categories.
+
+        Returns:
+            Path: Output file path under ``output_root``.
+
+        Raises:
+            OSError: If the output directory or file cannot be written.
+        """
         source = Path(map_path).resolve()
         try:
             relative = source.relative_to(Path(map_root).resolve())

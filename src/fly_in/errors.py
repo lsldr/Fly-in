@@ -1,2 +1,5 @@
+"""Errors raised while reading and validating map configurations."""
+
+
 class ConfigParseError(ValueError):
-    """A configuration error with an input line when one is available."""
+    """An invalid or unreadable map with line context when available."""

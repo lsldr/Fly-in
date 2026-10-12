@@ -12,7 +12,16 @@ from fly_in.solvers.bounds import NetworkProfiler
 
 
 class BoundAnalysisApplication:
-    """Coordinate map parsing, network profiling, and human or JSON reports."""
+    """A command-line application for necessary delivery-time bounds.
+
+    Use the JSON output to inspect the fields of
+    fly_in.solvers.bounds.InstanceProfile. A matching feasible schedule is
+    still required to prove that a lower bound is attainable.
+
+    Attributes:
+        argument_parser (argparse.ArgumentParser): Map path and output options.
+        map_parser (Parser): Reader for validated map declarations.
+    """
 
     def __init__(self) -> None:
         """Prepare the command's argument parser and map reader."""
@@ -26,7 +35,16 @@ class BoundAnalysisApplication:
         self.map_parser = Parser()
 
     def run(self) -> None:
-        """Analyze one requested map and print its necessary makespan bound."""
+        """Analyze the map and print its delivery-time lower bound.
+
+        Read arguments from sys.argv. Print a human-readable report or JSON to
+        standard output; report parsing and unreachable-map errors on stderr.
+
+        Raises:
+            SystemExit: Help was requested (code 0), or arguments, map
+                contents,
+                or network reachability are invalid (code 2).
+        """
         args = self.argument_parser.parse_args()
         try:
             config = self.map_parser.parse(args.map)
@@ -55,7 +73,11 @@ class BoundAnalysisApplication:
 
 
 def main() -> None:
-    """Run the map-bound analysis application."""
+    """Run the map-bound analysis application using sys.argv.
+
+    Raises:
+        SystemExit: Help was requested (code 0) or analysis failed (code 2).
+    """
     BoundAnalysisApplication().run()
 
 

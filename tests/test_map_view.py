@@ -1,3 +1,5 @@
+"""Map view coordinate, styling, slot, and zoom behavior checks."""
+
 from PySide6.QtGui import QColor
 
 from fly_in.gui.map_view import MapGraphicsView
@@ -5,6 +7,7 @@ from fly_in.models import EdgeZoneSpec, MapConfig, RegZoneSpec
 
 
 def test_zone_colors_use_configured_colors_for_every_zone_kind() -> None:
+    """Check configured fills take precedence for endpoints and hubs."""
     config = MapConfig(
         nb_drones=1,
         start=EdgeZoneSpec(name="start", x=0, y=0, color="green"),
@@ -21,6 +24,11 @@ def test_zone_colors_use_configured_colors_for_every_zone_kind() -> None:
 
 
 def test_normalized_coordinates_and_stable_slots() -> None:
+    """Check coordinate normalization and slot stability as drones leave.
+
+    The fixture map includes large and negative coordinates, while a 25-drone
+    fleet verifies that occupied markers remain distinct and retain positions.
+    """
     from PySide6.QtCore import QPointF
     from PySide6.QtWidgets import QApplication
 
@@ -62,6 +70,7 @@ def test_normalized_coordinates_and_stable_slots() -> None:
 
 
 def test_transit_slots_use_midpoint_and_escaped_tooltips() -> None:
+    """Check transit markers use link midpoints and escape tooltip names."""
     from PySide6.QtWidgets import QApplication
 
     from fly_in.models import RouteSpec
@@ -89,6 +98,7 @@ def test_transit_slots_use_midpoint_and_escaped_tooltips() -> None:
 
 
 def test_large_coordinates_resize_fit_and_manual_zoom() -> None:
+    """Check huge coordinates, resize fitting, and persistent manual zoom."""
     from PySide6.QtCore import QPoint, QPointF, Qt
     from PySide6.QtGui import QWheelEvent
     from PySide6.QtWidgets import QApplication

@@ -1,3 +1,5 @@
+"""Validated immutable map configuration models."""
+
 from enum import Enum
 
 from pydantic import (
@@ -10,7 +12,7 @@ from pydantic import (
 
 
 class ZoneType(str, Enum):
-    """Enumerate entering-zone movement rules."""
+    """Enumerate zone entry behavior and movement duration."""
 
     NORMAL = "normal"
     BLOCKED = "blocked"
@@ -19,7 +21,15 @@ class ZoneType(str, Enum):
 
 
 class ZoneSpec(BaseModel):
-    """Shared validated properties of a zone."""
+    """Shared validated properties of a zone.
+
+    Attributes:
+        name (str): Nonempty hub name without dashes or whitespace.
+        x (int): Horizontal map coordinate.
+        y (int): Vertical map coordinate.
+        zone_type (ZoneType): Entry behavior, defaulting to normal.
+        color (str | None): Optional nonempty, single-word display color.
+    """
 
     model_config = ConfigDict(frozen=True)
 
@@ -32,7 +42,17 @@ class ZoneSpec(BaseModel):
     @field_validator("name")
     @classmethod
     def valid_name(cls, value: str) -> str:
-        """Reject empty, dashed, or whitespace-containing hub names."""
+        """Validate a hub name for use in movement identifiers.
+
+        Args:
+            value (str): Candidate hub name.
+
+        Returns:
+            str: The unchanged name when valid.
+
+        Raises:
+            ValueError: If the name contains a dash or whitespace.
+        """
         if "-" in value or any(character.isspace() for character in value):
             raise ValueError("zone names cannot contain dashes or whitespace")
         return value
@@ -40,7 +60,17 @@ class ZoneSpec(BaseModel):
     @field_validator("color")
     @classmethod
     def valid_color(cls, value: str | None) -> str | None:
-        """Accept any nonempty single-word color value."""
+        """Validate an optional single-word color value.
+
+        Args:
+            value (str | None): Color label, or ``None`` when unspecified.
+
+        Returns:
+            str | None: The unchanged color value.
+
+        Raises:
+            ValueError: If a supplied color is empty or contains whitespace.
+        """
         if value is not None and (
             not value or any(c.isspace() for c in value)
         ):
@@ -49,7 +79,11 @@ class ZoneSpec(BaseModel):
 
 
 class RegZoneSpec(ZoneSpec):
-    """A regular zone with a positive simultaneous-drone capacity."""
+    """A regular zone with a positive simultaneous-drone capacity.
+
+    Attributes:
+        max_drones (int): Maximum number of drones allowed in the zone.
+    """
 
     max_drones: int = Field(default=1, gt=0)
 
@@ -59,7 +93,13 @@ class EdgeZoneSpec(ZoneSpec):
 
 
 class RouteSpec(BaseModel):
-    """A bidirectional connection between two zones."""
+    """A bidirectional connection between two zones.
+
+    Attributes:
+        from_hub (str): Name of one endpoint.
+        to_hub (str): Name of the other endpoint.
+        max_link_capacity (int): Positive simultaneous traversal limit.
+    """
 
     model_config = ConfigDict(frozen=True)
 
@@ -70,7 +110,17 @@ class RouteSpec(BaseModel):
     @field_validator("from_hub", "to_hub")
     @classmethod
     def valid_hub_name(cls, value: str) -> str:
-        """Validate an endpoint identifier without graph lookups."""
+        """Validate an endpoint name without checking graph membership.
+
+        Args:
+            value (str): Candidate endpoint identifier.
+
+        Returns:
+            str: The unchanged identifier when valid.
+
+        Raises:
+            ValueError: If the name is empty or contains a dash or whitespace.
+        """
         if not value or "-" in value or any(c.isspace() for c in value):
             raise ValueError(
                 "connection zone names cannot contain dashes or whitespace"
@@ -79,19 +129,38 @@ class RouteSpec(BaseModel):
 
     @model_validator(mode="after")
     def different_endpoints(self) -> "RouteSpec":
-        """Reject connections that lead back to the same hub."""
+        """Require the connection to join distinct hubs.
+
+        Returns:
+            RouteSpec: This validated connection specification.
+
+        Raises:
+            ValueError: If both endpoint names are equal.
+        """
         if self.from_hub == self.to_hub:
             raise ValueError("a connection must join two different zones")
         return self
 
     @property
     def name(self) -> str:
-        """Return the conventional connection name."""
+        """Conventional endpoint name joined by a hyphen.
+
+        Returns:
+            str: ``from_hub`` followed by ``to_hub`` separated by ``-``.
+        """
         return f"{self.from_hub}-{self.to_hub}"
 
 
 class MapConfig(BaseModel):
-    """A complete and internally consistent simulation map."""
+    """A complete and internally consistent simulation map.
+
+    Attributes:
+        nb_drones (int): Positive number of drones in the initial fleet.
+        start (EdgeZoneSpec): Unlimited source endpoint.
+        end (EdgeZoneSpec): Unlimited destination endpoint.
+        zones (list[RegZoneSpec]): Capacity-limited intermediate zones.
+        connections (list[RouteSpec]): Unique undirected map connections.
+    """
 
     model_config = ConfigDict(frozen=True)
 
@@ -103,7 +172,15 @@ class MapConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_map(self) -> "MapConfig":
-        """Validate unique hub names and undirected connections."""
+        """Validate unique hubs and valid, nonrepeated connections.
+
+        Returns:
+            MapConfig: This validated map.
+
+        Raises:
+            ValueError: If hub names repeat, a connection references an
+                unknown hub, or an undirected connection is repeated.
+        """
         zones = [self.start, *self.zones, self.end]
         names = [zone.name for zone in zones]
         if len(names) != len(set(names)):

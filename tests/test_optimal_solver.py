@@ -35,12 +35,26 @@ FLOW_GAP = ROOT / "tests/fixtures/flow_relaxation_gap.txt"
 
 
 def _network(text: str) -> DroneNetwork:
-    """Parse each independent declaration into a fresh topology."""
+    """Parse each independent declaration into a fresh topology.
+
+    Args:
+        text (str): Map declarations to parse into a fresh test topology.
+
+    Returns:
+        DroneNetwork: Fresh topology parsed from the supplied map text.
+    """
     return DroneNetwork.from_config(Parser().parse_text(text))
 
 
 def _ids(fleet: int) -> list[str]:
-    """Provide conventional IDs without using solver ordering helpers."""
+    """Provide conventional IDs without using solver ordering helpers.
+
+    Args:
+        fleet (int): Number of drone identifiers to generate.
+
+    Returns:
+        list[str]: Conventional identifiers from D1 through the fleet size.
+    """
     return [f"D{index + 1}" for index in range(fleet)]
 
 
@@ -49,7 +63,21 @@ def _measured_solve(
     initial: Solution | None,
     record_property: Callable[[str, object], None],
 ) -> Solution:
-    """Attach search time and Python peak allocation to the pytest report."""
+    """Attach search time and Python peak allocation to the pytest report.
+
+    Args:
+        solver (OptimalSolver): Exact solver whose planning time and peak
+            Python allocation are measured.
+        network (DroneNetwork): Topology passed to the exact solver.
+        fleet (int): Number of drones included in the solve request.
+        initial (Solution | None): Feasible incumbent supplied to the search or
+            measured solve.
+        record_property (Callable[[str, object], None]): Pytest report fixture
+            used to attach planning measurements.
+
+    Returns:
+        Solution: Proved result from the timed exact search.
+    """
     tracemalloc.start()
     try:
         started = perf_counter()
@@ -64,7 +92,15 @@ def _measured_solve(
 
 
 def _serial_seed(network: DroneNetwork, fleet: int) -> Solution:
-    """Separate independent paths completely to obtain a loose legal floor."""
+    """Separate independent paths completely to obtain a loose legal floor.
+
+    Args:
+        network (DroneNetwork): Topology used to construct independent paths.
+        fleet (int): Number of drone paths separated with start-hub waits.
+
+    Returns:
+        Solution: Feasible paths separated by waits to provide a loose floor.
+    """
     engine = SpaceTimeAStar(network)
     paths = {}
     offset = 0
@@ -83,7 +119,14 @@ def _serial_seed(network: DroneNetwork, fleet: int) -> Solution:
 
 
 def _mixed_text(seed: int) -> str:
-    """Mix cycles, capacities, priorities, and two-turn destination costs."""
+    """Mix cycles, capacities, priorities, and two-turn destination costs.
+
+    Args:
+        seed (int): Fixed random seed used to generate this map.
+
+    Returns:
+        str: Map declaration text generated from the fixed random seed.
+    """
     random = Random(seed)
     names = ["s", "a", "b", "c", "g"]
     rows = ["nb_drones: 3", "start_hub: s 0 0", "end_hub: g 4 0"]
@@ -104,7 +147,14 @@ def _mixed_text(seed: int) -> str:
 
 
 def _permuted(text: str) -> str:
-    """Reverse hub/link declarations while preserving endpoint declarations."""
+    """Reverse hub/link declarations while preserving endpoint declarations.
+
+    Args:
+        text (str): Map declaration text used to build a fresh test topology.
+
+    Returns:
+        str: Map text with hub and connection declaration order reversed.
+    """
     rows = text.splitlines()
     headers = [row for row in rows if not row.startswith(
         ("hub:", "connection:")
@@ -120,7 +170,13 @@ def _permuted(text: str) -> str:
 def test_mixed_topologies_match_independent_bfs(
     seed: int, permuted: bool,
 ) -> None:
-    """Certify exact makespans for tiny fixed-seed topologies."""
+    """Certify exact makespans for tiny fixed-seed topologies.
+
+    Args:
+        seed (int): Fixed random seed used to generate this map.
+        permuted (bool): Whether declarations are reversed before parsing to
+            check order invariance.
+    """
     text = _mixed_text(seed)
     network = _network(_permuted(text) if permuted else text)
     expected = exact_makespan(network, 3)
@@ -138,7 +194,15 @@ def test_complete_ct_search_including_nontight_flow_bound(
     path: Path, permuted: bool,
     record_property: Callable[[str, object], None],
 ) -> None:
-    """A real CT certificate must work when aggregate flow is insufficient."""
+    """A real CT certificate must work when aggregate flow is insufficient.
+
+    Args:
+        path (Path): Map path selected from fixture or supplied-catalog cases.
+        permuted (bool): Whether declarations are reversed before parsing to
+            check order invariance.
+        record_property (Callable[[str, object], None]): Pytest report fixture
+            used to attach planning measurements.
+    """
     text = path.read_text(encoding="utf-8")
     config = Parser().parse_text(_permuted(text) if permuted else text)
     network = DroneNetwork.from_config(config)
@@ -164,7 +228,13 @@ def test_complete_ct_search_including_nontight_flow_bound(
 def test_supplied_map_certificates_and_planning_measurements(
     path: Path, record_property: Callable[[str, object], None],
 ) -> None:
-    """Measure current proof planning under the supplied catalog identities."""
+    """Measure current proof planning under the supplied catalog identities.
+
+    Args:
+        path (Path): Map path selected from fixture or supplied-catalog cases.
+        record_property (Callable[[str, object], None]): Pytest report fixture
+            used to attach planning measurements.
+    """
     config = Parser().parse(path)
     network = DroneNetwork.from_config(config)
     bound = NetworkProfiler(network).profile(config.nb_drones).lower_bound
@@ -187,7 +257,18 @@ class EnvelopeMaps:
     def chain(
         length: int, capacity: int = 1, restricted: bool = False,
     ) -> list[str]:
-        """Declare one pipeline with unlimited endpoints."""
+        """Declare one pipeline with unlimited endpoints.
+
+        Args:
+            length (int): Number of connections in the generated pipeline.
+            capacity (int): Capacity shared by generated intermediate hubs and
+                connections.
+            restricted (bool): Whether intermediate hubs have two-turn entry
+                duration.
+
+        Returns:
+            list[str]: Pipeline map declarations with the requested capacity.
+        """
         rows = ["nb_drones: 25", "start_hub: s 0 0",
                 f"end_hub: g {length} 0"]
         names = ["s"] + [f"h{i}" for i in range(1, length)] + ["g"]
@@ -202,7 +283,15 @@ class EnvelopeMaps:
 
     @classmethod
     def build(cls, family: str) -> tuple[str, int]:
-        """Return an envelope map and its matching analytic makespan."""
+        """Return an envelope map and its matching analytic makespan.
+
+        Args:
+            family (str): Analytic topology family selected for lower-bound
+                verification.
+
+        Returns:
+            tuple[str, int]: Map text and its analytic makespan.
+        """
         if family == "capacity-three":
             rows = cls.chain(9, capacity=3)
             expected = 9 + (25 + 2) // 3 - 1
@@ -250,7 +339,14 @@ ENVELOPE = ["narrow-final-cut", "parallel-pipelines", "capacity-three",
 def test_analytic_envelope_and_planning_measurements(
     family: str, record_property: Callable[[str, object], None],
 ) -> None:
-    """Certify larger analytic families without enumerating joint states."""
+    """Certify larger analytic families without enumerating joint states.
+
+    Args:
+        family (str): Analytic topology family selected for lower-bound
+            verification.
+        record_property (Callable[[str, object], None]): Pytest report fixture
+            used to attach planning measurements.
+    """
     text, expected = EnvelopeMaps.build(family)
     config = Parser().parse_text(text)
     network = DroneNetwork.from_config(config)
@@ -285,7 +381,13 @@ def test_analytic_envelope_and_planning_measurements(
 def test_explicit_cutoff_raises_unproved_error(
     limits: dict[str, float | int], status: str,
 ) -> None:
-    """Retain an interrupted exact search's floor as diagnostic data."""
+    """Retain an interrupted exact search's floor as diagnostic data.
+
+    Args:
+        limits (dict[str, float | int]): Cutoff dictionary selecting a zero-
+            time or zero-node proof limit.
+        status (str): Expected status for the selected search cutoff.
+    """
     network = DroneNetwork.from_config(Parser().parse(TRAP))
     initial = PrioritizedPlanner().solve(network, _ids(2))
     assert initial.makespan == 4
@@ -325,7 +427,14 @@ def test_unlimited_child_keeps_parent_deadline_and_cancellation() -> None:
 def test_low_level_keeps_the_earlier_nested_deadline(
     expired: str, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A new path-call budget cannot extend an existing engine deadline."""
+    """A new path-call budget cannot extend an existing engine deadline.
+
+    Args:
+        expired (str): Whether the engine or path call owns the already expired
+            deadline.
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to patch search
+            behavior during the test.
+    """
     network = _network("nb_drones: 1\nstart_hub: s 0 0\n"
                        "end_hub: g 1 0\nconnection: s-g\n")
     engine_deadline = perf_counter() + 60
@@ -344,7 +453,12 @@ def test_low_level_keeps_the_earlier_nested_deadline(
 def test_low_level_keeps_both_nested_cancellation_tokens(
     cancelled: str,
 ) -> None:
-    """Either caller's cancellation interrupts a nested path request."""
+    """Either caller's cancellation interrupts a nested path request.
+
+    Args:
+        cancelled (str): Whether cancellation is set on the engine or path-call
+            budget.
+    """
     network = _network("nb_drones: 1\nstart_hub: s 0 0\n"
                        "end_hub: g 1 0\nconnection: s-g\n")
     engine_cancel, call_cancel = Event(), Event()
@@ -375,7 +489,14 @@ def test_expired_parent_cannot_certify_even_a_bound_matching_floor() -> None:
 def test_cancellation_during_low_level_work_remains_cancellation(
     stage: str, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Cancel inside a real low-level invocation at either planning stage."""
+    """Cancel inside a real low-level invocation at either planning stage.
+
+    Args:
+        stage (str): Whether cancellation is injected during floor seeding or
+            CT search.
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to patch search
+            behavior during the test.
+    """
     network = DroneNetwork.from_config(Parser().parse(TRAP))
     initial = _serial_seed(network, 2) if stage == "search" else None
     cancel = Event()
@@ -387,7 +508,25 @@ def test_cancellation_during_low_level_work_remains_cancellation(
         constraints: Iterable[Constraint] = (), horizon: int = 100,
         budget: SearchBudget | None = None,
     ) -> TimedPath | None:
-        """Trigger the caller token while the search invokes its low level."""
+        """Trigger the caller token while the search invokes its low level.
+
+        Args:
+            engine (SpaceTimeAStar): Engine whose path search is intercepted.
+            agent (str): Drone identifier passed to the path search.
+            reservations (ReservationTable | None): Existing claims for the
+                path search.
+            constraints (Iterable[Constraint]): Forbidden resource uses for
+                the path search.
+            horizon (int): Latest arrival turn allowed by the path search.
+            budget (SearchBudget | None): Cooperative limits for path search.
+
+        Returns:
+            TimedPath | None: Original path result after setting cancellation.
+
+        Raises:
+            PlanningCancelled: When the wrapped path search checks the set
+                caller token.
+        """
         cancel.set()
         return original(engine, agent, reservations, constraints, horizon,
                         budget)
@@ -404,7 +543,11 @@ def test_cancellation_during_low_level_work_remains_cancellation(
 def test_invalid_supplied_seed_never_receives_a_certificate(
     invalid: str,
 ) -> None:
-    """Reject illegal floors despite bound equality or initial proof flags."""
+    """Reject illegal floors despite bound equality or initial proof flags.
+
+    Args:
+        invalid (str): Malformed incumbent case selected by pytest.
+    """
     network = DroneNetwork.from_config(Parser().parse(TRAP))
     initial = PrioritizedPlanner().solve(network, _ids(2))
     paths = dict(initial.paths)
@@ -439,7 +582,16 @@ def test_unreachable_map_has_a_controlled_error() -> None:
 def test_gui_unproved_work_emits_failure_without_prepared(
     limits: dict[str, float | int], app: QApplication, tmp_path: Path,
 ) -> None:
-    """Actual proof-mode worker cutoffs must never transfer playback state."""
+    """Actual proof-mode worker cutoffs must never transfer playback state.
+
+    Args:
+        limits (dict[str, float | int]): Cutoff dictionary selecting a zero-
+            time or zero-node proof limit.
+        app (QApplication): Qt application fixture used to process planning-
+            worker signals.
+        tmp_path (Path): Pytest temporary directory used for logs or generated
+            input.
+    """
     worker = PlanningWorker(19, Parser().parse(TRAP), "optimal", limits,
                             records_dir=tmp_path)
     prepared: list[tuple[object, ...]] = []

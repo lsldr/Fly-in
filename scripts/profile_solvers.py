@@ -20,20 +20,52 @@ from fly_in.solvers.protocol import PreparableSolver
 
 
 class SolverProfiler:
-    """Measure configured strategies on independent copies of one map."""
+    """Planning measurements for selected strategies on one map.
+
+    Attributes:
+        map_path (Path): Source map to parse once for the measurements.
+        strategies (tuple[str, ...]): Solver names in measurement order.
+        time_budget (float): Planning budget in seconds passed to each solver.
+        records_root (Path): Directory for solver-generated records.
+    """
 
     def __init__(
         self, map_path: Path, strategies: list[str], time_budget: float,
         records_root: Path,
     ) -> None:
-        """Capture source, strategy order, budget, and log destination."""
+        """Capture the profiling inputs without parsing or executing the map.
+
+        Args:
+            map_path (Path): Source map file.
+            strategies (list[str]): Solver names to measure, copied into a
+                tuple.
+            time_budget (float): Planning budget in seconds for each strategy.
+            records_root (Path): Destination for solver-generated records.
+        """
         self.map_path = map_path
         self.strategies = tuple(strategies)
         self.time_budget = time_budget
         self.records_root = records_root
 
     def measure(self) -> dict[str, object]:
-        """Profile preparation only, then verify each produced run."""
+        """Measure preparation time and memory, then execute each schedule.
+
+        Create a fresh simulation per strategy. Include execution failures in
+        result rows, and preserve planning provenance separately. Start and
+        stop
+        process-wide tracemalloc tracing around each preparation; execution is
+        excluded from planning time and peak traced memory.
+
+        Returns:
+            dict[str, object]: JSON-compatible report with schema version, UTC
+            timestamp, source path, environment, and ordered result rows. Rows
+            include planning milliseconds, peak traced bytes, search counters,
+            and either execution metrics or a failure message.
+
+        Raises:
+            ConfigParseError: The source map cannot be read or parsed.
+            ValueError: Solver creation or simulation setup rejects its inputs.
+        """
         config = Parser().parse(self.map_path)
         results = []
         for name in self.strategies:
@@ -90,10 +122,22 @@ class SolverProfiler:
 
 
 class ProfilingApplication:
-    """Own profiling arguments and timestamped report persistence."""
+    """Command-line options and report persistence for solver profiling.
+    """
 
     def run(self) -> None:
-        """Read a map and save a timestamped profiling record."""
+        """Profile the command-line map and save a timestamped JSON report.
+
+        Print the report and its path to stdout. Create the record directory as
+        needed, and use fly_in.output.AtomicFileWriter to replace the report.
+
+        Raises:
+            SystemExit: Help was requested (code 0), or arguments are invalid
+                (code 2), including a negative time budget.
+            ConfigParseError: The source map cannot be read or parsed.
+            ValueError: Solver creation or simulation setup rejects its inputs.
+            OSError: The report cannot be persisted.
+        """
         parser = argparse.ArgumentParser(description=__doc__)
         parser.add_argument('map', type=Path)
         parser.add_argument(
@@ -120,7 +164,14 @@ class ProfilingApplication:
 
 
 def main() -> None:
-    """Delegate the profiling command to its application owner."""
+    """Run the profiling application using sys.argv.
+
+    Raises:
+        SystemExit: Help was requested or command-line arguments are invalid.
+        ConfigParseError: The source map cannot be read or parsed.
+        ValueError: Solver creation or simulation setup rejects its inputs.
+        OSError: The report cannot be persisted.
+    """
     ProfilingApplication().run()
 
 

@@ -13,6 +13,7 @@ from fly_in.solvers.prioritized import PriorityBasedSolver
 
 
 def test_inspector_tracks_restricted_transit_and_arrival() -> None:
+    """Check plain-text names, capacities, occupancy, traffic, and arrivals."""
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     app = QApplication.instance() or QApplication([])
     config = MapConfig(

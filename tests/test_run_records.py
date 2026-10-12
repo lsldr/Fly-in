@@ -23,7 +23,11 @@ connection: r-g
 
 
 def simulation() -> Simulation:
-    """Build an independent restricted traversal run."""
+    """Build a fresh simulation for a restricted-link traversal.
+
+    Returns:
+        Simulation: Two-drone run state before its first turn.
+    """
     return Simulation.from_config(Parser().parse_text(SOURCE.decode()),
                                   PriorityBasedSolver())
 
@@ -31,7 +35,11 @@ def simulation() -> Simulation:
 def test_completed_record_is_idempotent_and_tracks_arrivals(
     tmp_path: Path,
 ) -> None:
-    """Both frontends use one finalizer and charge transit once."""
+    """Finalize once and retain movement and arrival measurements.
+
+    Args:
+        tmp_path (Path): Isolated root for source and generated artifacts.
+    """
     run = RunSession(tmp_path / 'maps' / 'easy' / 'a.txt', 'priority',
                      tmp_path / 'maps', tmp_path / 'out', tmp_path / 'records',
                      source_bytes=SOURCE)
@@ -55,7 +63,12 @@ def test_completed_record_is_idempotent_and_tracks_arrivals(
 def test_partial_record_preserves_successful_output(
     tmp_path: Path, status: str,
 ) -> None:
-    """Partial runs never replace a completed movement file."""
+    """Keep prior movement output when recording a partial run.
+
+    Args:
+        tmp_path (Path): Isolated filesystem root for both runs.
+        status (str): Partial run state, such as failed or cancelled.
+    """
     source = tmp_path / 'maps' / 'a.txt'
     output = OutputWriter(tmp_path / 'out').write(
         source, [['previous']], tmp_path / 'maps')
@@ -74,7 +87,11 @@ def test_partial_record_preserves_successful_output(
 
 
 def test_external_names_do_not_collide(tmp_path: Path) -> None:
-    """Source paths distinguish external maps with matching basenames."""
+    """Distinguish external maps that share a basename.
+
+    Args:
+        tmp_path (Path): Temporary root containing separate source trees.
+    """
     writer = OutputWriter(tmp_path / 'out')
     first = writer.write(tmp_path / 'first' / 'a.txt', [['a']])
     second = writer.write(tmp_path / 'second' / 'a.txt', [['b']])
@@ -86,7 +103,11 @@ def test_external_names_do_not_collide(tmp_path: Path) -> None:
 def test_failed_replace_keeps_old_file_and_cleans_temporary(
     tmp_path: Path,
 ) -> None:
-    """Atomic writes leave the existing output intact when replace fails."""
+    """Preserve old contents and remove the temporary file after failure.
+
+    Args:
+        tmp_path (Path): Temporary directory for the target and temp file.
+    """
     output = tmp_path / 'output.txt'
     output.write_text('old')
     with patch.object(Path, 'replace', side_effect=OSError('denied')):

@@ -63,11 +63,16 @@ Cycles in the graph that can cause infinite loops in poorly designed algorithms.
 
 ## Expected Behavior
 
-All maps are designed to be solvable with a well-implemented algorithm. However:
+The easy, medium, hard, challenger, and extra maps are designed to be solvable
+with a well-implemented algorithm. However:
 
 - **Easy maps**: Should solve quickly with any reasonable approach
 - **Medium maps**: May require backtracking, path optimization, or capacity management
 - **Hard maps**: Demand sophisticated algorithms with proper conflict resolution and optimization
+
+The [unsolvable checks](unsolvable/README.md) separately provide five valid
+maps with unreachable destinations and one solvable control. These check that
+parsing succeeds and planning reports unreachable destinations clearly.
 
 ## Performance Benchmarks
 

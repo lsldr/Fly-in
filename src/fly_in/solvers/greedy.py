@@ -12,36 +12,68 @@ from fly_in.solvers.protocol import Schedule
 
 @dataclass(frozen=True)
 class WeightedRoute:
-    """One greedy route's discounted duration and selected first hop."""
+    """One greedy route's discounted duration and selected first hop.
+
+    Attributes:
+        distance (float): Weighted path duration, measured in quarter-turns.
+        first_hop (Zone | None): Next hub, or None when the goal is
+            inaccessible from the source.
+    """
 
     distance: float
     first_hop: Zone | None
 
 
 class WeightedRoutePlanner:
-    """Own discounted shortest-route analysis for one immutable topology.
+    """Discounted shortest-route analyzer for one immutable topology.
 
     Priority entry duration is multiplied by 0.75. This heuristic preference
     differs from physical latency and never supplies an optimality bound.
     Equal distances keep the first predecessor; the queue breaks ties by name.
     Analyses are cached by source only within this bound network. Recreate the
     planner whenever topology or resource-zone types change.
+
+    Attributes:
+        network (DroneNetwork): Immutable topology analyzed by this planner.
+        routes (NativeDijkstra): Weighted shortest-route engine.
     """
 
     def __init__(self, network: DroneNetwork) -> None:
-        """Bind a network and begin with no cached source analyses."""
+        """Bind a network and begin with no cached source analyses.
+
+        Args:
+            network (DroneNetwork): Topology kept fixed for this planner.
+        """
         self.network = network
         self.routes = NativeDijkstra(network, self._entry_score)
         self._analyses: dict[str, WeightedRoute] = {}
 
     def analyze(self, source: Zone) -> WeightedRoute:
-        """Return weighted distance and first hop from one Dijkstra run."""
+        """Return weighted distance and first hop from one Dijkstra run.
+
+        Args:
+            source (Zone): Hub from which to route.
+
+        Returns:
+            WeightedRoute: Cached route analysis, including an infinite
+                distance and missing hop when the goal is unreachable.
+        """
         if source.name not in self._analyses:
             self._analyses[source.name] = self._search(source)
         return self._analyses[source.name]
 
     def next_zone(self, source: Zone) -> Zone:
-        """Return the cached first hop or report an inaccessible goal."""
+        """Return the cached first hop or report an inaccessible goal.
+
+        Args:
+            source (Zone): Hub from which to route.
+
+        Returns:
+            Zone: First hub on the weighted shortest route.
+
+        Raises:
+            ValueError: If no accessible route reaches the goal.
+        """
         route = self.analyze(source)
         if route.first_hop is None:
             raise ValueError(
@@ -51,7 +83,15 @@ class WeightedRoutePlanner:
         return route.first_hop
 
     def _search(self, source: Zone) -> WeightedRoute:
-        """Use strict distance improvements and stable queue-name ties."""
+        """Use strict distance improvements and stable queue-name ties.
+
+        Args:
+            source (Zone): Hub from which to search.
+
+        Returns:
+            WeightedRoute: Weighted shortest distance and first hop, or an
+                infinite-distance result when the goal is unreachable.
+        """
         network = self.network
         analysis = self.routes.analyze(source.name, goal=network.end.name)
         previous = analysis.predecessors
@@ -72,16 +112,27 @@ class WeightedRoutePlanner:
 
         Priority zones have one-turn entry duration, discounted to three
         quarters. Other destinations retain their full physical duration.
+
+        Args:
+            zone (Zone): Destination whose entry cost is calculated.
+
+        Returns:
+            tuple[int, int]: Weighted duration in quarter-turns and a zero
+                secondary score.
         """
         return (3 if zone.zone_type is ZoneType.PRIORITY
                 else 4 * zone.movement_cost()), 0
 
 
 class GreedySolver:
-    """Route drones along weighted shortest paths with capacity checks."""
+    """Turn-by-turn planner using weighted routes and capacity checks.
+
+    Route analyses and forced departures are retained across turns for the
+    same network and fleet objects.
+    """
 
     def __init__(self) -> None:
-        """Cache static routes for the current immutable topology."""
+        """Start without a bound topology, fleet, or committed departures."""
         self._network: DroneNetwork | None = None
         self._route_planner: WeightedRoutePlanner | None = None
         self._routes: dict[str, Zone] = {}
@@ -90,7 +141,19 @@ class GreedySolver:
         self._fleet: tuple[Drone, ...] = ()
 
     def plan(self, network: DroneNetwork, drones: list[Drone]) -> Schedule:
-        """Select departures while guaranteeing next-turn forced arrivals."""
+        """Select departures while guaranteeing next-turn forced arrivals.
+
+        Args:
+            network (DroneNetwork): Current immutable topology.
+            drones (list[Drone]): Current fleet positions and transit states.
+
+        Returns:
+            Schedule: One row containing legal departures for this turn.
+
+        Raises:
+            ValueError: If no route exists or a committed departure is no
+                longer legal.
+        """
         if network is not self._network:
             self._network = network
             self._route_planner = WeightedRoutePlanner(network)
@@ -141,7 +204,18 @@ class GreedySolver:
         return [actions]
 
     def _route(self, network: DroneNetwork, source: Zone) -> Zone:
-        """Cache a next hop for current or projected hub occupants."""
+        """Cache a next hop for current or projected hub occupants.
+
+        Args:
+            network (DroneNetwork): Topology containing the source.
+            source (Zone): Hub whose next hop is needed.
+
+        Returns:
+            Zone: First hop toward the goal.
+
+        Raises:
+            ValueError: If the goal cannot be reached from the source.
+        """
         if source.name not in self._routes:
             assert self._route_planner is not None
             self._routes[source.name] = self._route_planner.next_zone(source)
@@ -157,6 +231,15 @@ class GreedySolver:
         would overflow then, only guaranteed one-turn departures may free it.
         Every candidate rechecks the whole projection, so later choices cannot
         invalidate commitments accepted for earlier restricted departures.
+
+        Args:
+            network (DroneNetwork): Topology and capacity limits.
+            drones (list[Drone]): Current fleet state.
+            departures (dict[str, Zone]): Proposed immediate destinations.
+
+        Returns:
+            dict[str, Zone] | None: Forced one-turn evacuations that keep the
+                projection legal, or None if no safe projection exists.
         """
         positions: dict[str, Zone] = {}
         incoming: Counter[str] = Counter()

@@ -21,7 +21,16 @@ ROOT = Path(__file__).resolve().parents[1] / 'maps'
 def test_supplied_target_for_each_rung(
     relative: str, target: int, strategy: str, tmp_path: Path,
 ) -> None:
-    """Execute the complete schedule, including restricted arrival events."""
+    """Execute the complete schedule, including restricted arrival events.
+
+    Args:
+        relative (str): Map path relative to the project root, selected from
+            benchmark targets.
+        target (int): Maximum expected completion turn for the selected map.
+        strategy (str): Solver strategy selected for this shared regression.
+        tmp_path (Path): Pytest temporary directory used for logs or generated
+            input.
+    """
     path = ROOT / relative
     solver = SolverFactory(relative, tmp_path).create(
         strategy,

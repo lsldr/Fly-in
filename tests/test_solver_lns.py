@@ -22,7 +22,14 @@ from fly_in.solvers.prioritized import PrioritizedPlanner
 
 
 def _config(fleet: int = 4) -> MapConfig:
-    """Return a bottleneck with a restricted-entry pipeline and alternate."""
+    """Return a bottleneck with a restricted-entry pipeline and alternate.
+
+    Args:
+        fleet (int): Number of drones in the generated map configuration.
+
+    Returns:
+        MapConfig: Bottleneck fixture with the requested fleet size.
+    """
     return MapConfig(
         nb_drones=fleet,
         start=EdgeZoneSpec(name='s', x=0, y=0),
@@ -40,12 +47,27 @@ def _config(fleet: int = 4) -> MapConfig:
 
 
 def _fleet(fleet: int = 4) -> list[str]:
-    """Return stable conventional IDs for a small fixture."""
+    """Return stable conventional IDs for a small fixture.
+
+    Args:
+        fleet (int): Number of drone identifiers to generate.
+
+    Returns:
+        list[str]: Stable identifiers D1 through the requested fleet size.
+    """
     return [f'D{i}' for i in range(1, fleet + 1)]
 
 
 def _delayed(solution: Solution, turns: int = 2) -> Solution:
-    """Make a feasible but slower incumbent by delaying all departures."""
+    """Make a feasible but slower incumbent by delaying all departures.
+
+    Args:
+        solution (Solution): Feasible schedule whose paths are delayed.
+        turns (int): Number of initial wait turns added to every path.
+
+    Returns:
+        Solution: Equivalent feasible paths with delayed departures.
+    """
     paths = {}
     for agent, path in solution.paths.items():
         waits = tuple(('s', turn) for turn in range(turns))
@@ -76,7 +98,11 @@ def test_fixed_seed_and_iteration_limit_are_reproducible() -> None:
 
 @pytest.mark.parametrize('seed', range(5))
 def test_improvement_never_worsens_the_floor(seed: int) -> None:
-    """Both selection heuristics preserve the incumbent's objective."""
+    """Both selection heuristics preserve the incumbent's objective.
+
+    Args:
+        seed (int): Fixed random seed used to generate this map.
+    """
     network = DroneNetwork.from_config(_config(7))
     initial = PrioritizedPlanner().solve(network, _fleet(7))
     original_paths = dict(initial.paths)
@@ -137,7 +163,14 @@ def test_partial_repairs_restore_all_reservations(
     monkeypatch: pytest.MonkeyPatch,
     failure: Literal['infeasible', 'timeout', 'cancelled'],
 ) -> None:
-    """Undo newly reserved routes before restoring destroyed old paths."""
+    """Undo newly reserved routes before restoring destroyed old paths.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to patch search
+            behavior during the test.
+        failure (Literal['infeasible', 'timeout', 'cancelled']): Injected
+            repair outcome: infeasible, timeout, or cancellation.
+    """
     network = DroneNetwork.from_config(_config(2))
     initial = PrioritizedPlanner().solve(network, _fleet(2))
     captured: list[ReservationTable] = []
@@ -146,6 +179,11 @@ def test_partial_repairs_restore_all_reservations(
         """Expose the transient table solely for rollback assertions."""
 
         def __init__(self, graph: DroneNetwork) -> None:
+            """Capture each reservation table created by the patched solver.
+
+            Args:
+                graph (DroneNetwork): Topology for the captured table.
+            """
             super().__init__(graph)
             captured.append(self)
 
@@ -159,7 +197,26 @@ def test_partial_repairs_restore_all_reservations(
         constraints: tuple[Constraint, ...] = (), horizon: int = 100,
         budget: SearchBudget | None = None,
     ) -> TimedPath | None:
-        """Complete one repair, then fail before the second finishes."""
+        """Complete one repair, then fail before the second finishes.
+
+        Args:
+            engine (SpaceTimeAStar): Engine whose path search is intercepted.
+            agent (str): Drone identifier passed to the path search.
+            reservations (ReservationTable | None): Existing claims for the
+                path search.
+            constraints (tuple[Constraint, ...]): Forbidden resource uses for
+                the path search.
+            horizon (int): Latest arrival turn allowed by the path search.
+            budget (SearchBudget | None): Cooperative limits for path search.
+
+        Returns:
+            TimedPath | None: Original result, or None for injected
+                infeasibility.
+
+        Raises:
+            SearchTimeout: On the injected timeout case.
+            PlanningCancelled: On the injected cancellation case.
+        """
         nonlocal calls
         calls += 1
         if calls == 2:
@@ -206,7 +263,11 @@ def test_zero_iteration_limit_preserves_the_seed() -> None:
 
 @pytest.mark.parametrize('seconds', [-1.0, float('inf'), float('nan')])
 def test_invalid_time_budget_is_rejected(seconds: float) -> None:
-    """CLI-independent callers receive useful parameter errors."""
+    """CLI-independent callers receive useful parameter errors.
+
+    Args:
+        seconds (float): Invalid duration passed to the solver constructor.
+    """
     with pytest.raises(ValueError, match='time budget'):
         LNSImprover(seconds)
 

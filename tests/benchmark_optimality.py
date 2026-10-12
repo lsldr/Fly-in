@@ -29,7 +29,29 @@ from fly_in.solvers.optimal import OptimalSolver, UnprovedPlanningError
 
 
 def benchmark(path: Path, minimum: int, repeats: int) -> dict[str, object]:
-    """Measure fresh default preparations, execution, and separate memory."""
+    """Measure planning, execution, and a separate peak-memory solve.
+
+    Use fresh solver instances for each repetition. Validate every timed
+    execution through schedule_replay.replay, which derives physical cost
+    from emitted tokens independently of the scheduling code.
+
+    Args:
+        path (Path): Reviewed map file under the repository's maps directory.
+        minimum (int): Independently established minimum delivery turns.
+        repeats (int): Positive number of timed planning and execution runs.
+
+    Returns:
+        dict[str, object]: JSON-compatible row with topology sizes, proof,
+        achieved turns, timing samples and median in seconds, search nodes,
+        and peak traced Python memory in bytes from the additional solve.
+
+    Raises:
+        ConfigParseError: The map cannot be read or parsed.
+        AssertionError: The default solver lacks proof or its result disagrees
+            with the expected minimum or independent replay.
+        RuntimeError: Simulation execution fails.
+        ValueError: Planning fails or the map is outside the catalog root.
+    """
     config = Parser().parse(path)
     seconds = []
     execution = []
@@ -74,7 +96,26 @@ def benchmark(path: Path, minimum: int, repeats: int) -> dict[str, object]:
 def benchmark_crossing(
     repeats: int, proof_seconds: float,
 ) -> dict[str, object]:
-    """Bound a deliberately difficult exact search and report honest gaps."""
+    """Measure a bounded proof search on the difficult crossing fixture.
+
+    Record an interrupted search's feasible incumbent as diagnostic data.
+    An interruption is a measured outcome, not an optimality certificate.
+
+    Args:
+        repeats (int): Positive number of fresh planning measurements.
+        proof_seconds (float): Finite positive time limit per proof search.
+
+    Returns:
+        dict[str, object]: JSON-compatible topology and analytic-proof data,
+        with per-run elapsed seconds, status, diagnostic turns, gap, flow
+        bound, search node count, and optimality flag.
+
+    Raises:
+        ConfigParseError: The fixture cannot be read or parsed.
+        AssertionError: Search returns no usable incumbent or an inconsistent
+            certificate.
+        ValueError: Solver configuration or planning inputs are invalid.
+    """
     config = Parser().parse(EXTRA / HARD_CASE.filename)
     measurements = []
     for _ in range(repeats):
@@ -108,7 +149,19 @@ def benchmark_crossing(
 
 
 def main() -> None:
-    """Benchmark all reviewed fixtures and display concrete results."""
+    """Benchmark reviewed fixtures using command-line measurement options.
+
+    Print one JSON result per line. If you supply --report, also write the
+    combined report to that path; its parent directory must already exist.
+
+    Raises:
+        SystemExit: Help was requested or measurement arguments are invalid.
+        ConfigParseError: A fixture cannot be read or parsed.
+        AssertionError: A measured solution violates its independent checks.
+        RuntimeError: A simulation fails during measurement.
+        ValueError: Planning or independent state enumeration fails.
+        OSError: The optional combined report cannot be written.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--report", type=Path)

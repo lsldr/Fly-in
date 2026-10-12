@@ -8,7 +8,15 @@ from fly_in.solvers.protocol import Solver
 
 @dataclass(frozen=True)
 class PlanningProvenance:
-    """Describe a planning result without treating delivery as a proof."""
+    """Describe a planning result without treating delivery as a proof.
+
+    Attributes:
+        optimal_makespan (bool): Whether the planner proved the makespan.
+        status (str): Planning status, or ``not_prepared`` without a result.
+        proof_reason (str | None): Explanation attached to the planner result.
+        lower_bound (int | None): Proven makespan lower bound, when known.
+        achieved_makespan (int | None): Makespan of an available solution.
+    """
 
     optimal_makespan: bool = False
     status: str = 'not_prepared'
@@ -25,6 +33,14 @@ class PlanningProvenance:
         An interrupted incumbent remains diagnostic evidence even when its
         paths are legal. It cannot supply an optimal-success flag or enable
         playback. Unscheduled strategies have no planning certificate.
+
+        Args:
+            solver (Solver | None): Planner whose solution or interruption is
+                inspected.
+            error (Exception | None): Failure raised during planning, if any.
+
+        Returns:
+            PlanningProvenance: Immutable snapshot of planning evidence.
         """
         interrupted = getattr(solver, 'unproved', None) or error
         candidate = getattr(solver, 'solution', None)
@@ -57,5 +73,9 @@ class PlanningProvenance:
         )
 
     def record(self) -> dict[str, object]:
-        """Return serializable planning fields without execution status."""
+        """Return serializable planning fields without execution status.
+
+        Returns:
+            dict[str, object]: Field mapping suitable for JSON encoding.
+        """
         return asdict(self)

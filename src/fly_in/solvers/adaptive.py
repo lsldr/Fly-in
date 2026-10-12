@@ -25,7 +25,19 @@ from fly_in.solvers.prioritized import PrioritizedPlanner, SeedPlanner
 
 
 class AdaptiveSolver(ScheduledSolver):
-    """Select bounded improvement stages using graph and fleet features."""
+    """Budgeted portfolio selected from graph and fleet features.
+
+    Attributes:
+        time_budget (float): Portfolio duration in seconds.
+        seed (int): Base seed for randomized improvement stages.
+        max_iter (int): LNS iteration limit per stage.
+        node_budget (int): High-level node limit for exact/PBS stages.
+        map_name (str): Label recorded for the network.
+        log_path (Path): Append-only JSONL run-log path.
+        profile (InstanceProfile | None): Most recent network profile.
+        winning_rung (str): Label of the stage with the incumbent objective.
+        stage_results (dict[str, dict[str, object]]): Per-stage measurements.
+    """
 
     def __init__(
         self, time_budget: float = 1.0, seed: int = 0,
@@ -33,7 +45,21 @@ class AdaptiveSolver(ScheduledSolver):
         map_name: str = 'in_memory',
         log_path: Path | None = None,
     ) -> None:
-        """Set portfolio limits and the append-only JSONL destination."""
+        """Set portfolio limits and the append-only JSONL destination.
+
+        Args:
+            time_budget (float): Finite, nonnegative portfolio seconds.
+            seed (int): Base seed for randomized stages.
+            max_iter (int): Nonnegative LNS iteration limit.
+            node_budget (int): Nonnegative high-level node limit.
+            map_name (str): Name recorded in run provenance.
+            log_path (Path | None): JSONL output path; defaults to the records
+                directory when omitted.
+
+        Raises:
+            ValueError: If the duration is invalid or either search limit is
+                negative.
+        """
         super().__init__()
         if not isfinite(time_budget) or time_budget < 0:
             raise ValueError('time budget must be finite and nonnegative')
@@ -53,7 +79,30 @@ class AdaptiveSolver(ScheduledSolver):
         self, network: DroneNetwork, drone_ids: list[str],
         initial: Solution | None = None, budget: SearchBudget | None = None,
     ) -> Solution:
-        """Run the floor, quick LNS, and one feature-selected deeper stage."""
+        """Run the feasible floor, quick LNS, and a feature-selected stage.
+
+        The portfolio deadline is soft while constructing a missing floor,
+        which uses the parent budget. Once a floor exists, later timeout keeps
+        that incumbent. A result matching the certified lower bound receives
+        optimal status even if the improvement stage timed out.
+
+        Args:
+            network (DroneNetwork): Topology to plan.
+            drone_ids (list[str]): Fleet identifiers to schedule.
+            initial (Solution | None): Optional feasible incumbent.
+            budget (SearchBudget | None): Parent deadline and cancellation.
+
+        Returns:
+            Solution: Best feasible schedule found within the portfolio.
+
+        Raises:
+            ValueError: If the topology is unreachable or an incumbent is
+                invalid.
+            PlanningCancelled: If explicit cancellation is requested.
+            SearchTimeout: If a parent deadline expires while constructing a
+                missing floor.
+            OSError: If the JSONL run log cannot be created or appended.
+        """
         started = perf_counter()
         parent = budget or SearchBudget()
         deadline = started + self.time_budget
@@ -103,12 +152,26 @@ class AdaptiveSolver(ScheduledSolver):
 
     @staticmethod
     def _remaining(deadline: float) -> float:
-        """Return nonnegative wall-clock seconds remaining."""
+        """Return nonnegative wall-clock seconds remaining.
+
+        Args:
+            deadline (float): Absolute ``perf_counter`` deadline in seconds.
+
+        Returns:
+            float: Remaining seconds, clamped at zero.
+        """
         return max(0.0, deadline - perf_counter())
 
     @staticmethod
     def _stage_row(solution: Solution) -> dict[str, object]:
-        """Expose measured outcome and proof status for each attempted rung."""
+        """Expose measured outcome and proof status for an attempted rung.
+
+        Args:
+            solution (Solution): Stage result to summarize.
+
+        Returns:
+            dict[str, object]: Stable scalar measurements for JSON logging.
+        """
         return {
             'makespan': solution.makespan,
             'path_cost': solution.cost,
@@ -123,7 +186,14 @@ class AdaptiveSolver(ScheduledSolver):
         self, incumbent: Solution, candidate: Solution,
         stage: str, label: str,
     ) -> None:
-        """Adopt only a strict lexicographic improvement or new proof."""
+        """Adopt only a strict lexicographic improvement or new proof.
+
+        Args:
+            incumbent (Solution): Mutable best result updated in place.
+            candidate (Solution): Completed result from one stage.
+            stage (str): Key under which to record stage measurements.
+            label (str): Human-readable name for the winning stage.
+        """
         self.stage_results[stage] = self._stage_row(candidate)
         incumbent.stats.expanded += candidate.stats.expanded
         incumbent.stats.nodes += candidate.stats.nodes
@@ -139,7 +209,15 @@ class AdaptiveSolver(ScheduledSolver):
     def _deep_stage(
         self, remaining: float,
     ) -> tuple[str, str, ICBSSolver | PBSSolver | LNSImprover]:
-        """Choose exact search for tiny instances, else PBS or more LNS."""
+        """Choose exact search for tiny instances, else PBS or more LNS.
+
+        Args:
+            remaining (float): Remaining stage budget in seconds.
+
+        Returns:
+            tuple[str, str, ICBSSolver | PBSSolver | LNSImprover]: Stage key,
+                display label, and configured solver.
+        """
         profile = self.profile
         assert profile is not None
         if profile.fleet_size <= 4 and profile.vertices <= 15:
@@ -159,7 +237,23 @@ class AdaptiveSolver(ScheduledSolver):
         self, network: DroneNetwork, drone_ids: list[str],
         floor: Solution, final: Solution, elapsed_ms: float,
     ) -> None:
-        """Append exactly one compact JSON object after completed planning."""
+        """Append one compact JSON object after completed planning.
+
+        Args:
+            network (DroneNetwork): Network whose features are recorded.
+            drone_ids (list[str]): Fleet identifiers used in planning.
+            floor (Solution): Initial feasible result before improvements.
+            final (Solution): Final incumbent and proof metadata.
+            elapsed_ms (float): Total measured planning duration in
+                milliseconds.
+
+        Side Effects:
+            Creates parent directories as needed and appends one JSON line to
+            ``log_path``.
+
+        Raises:
+            OSError: If the log directory or file cannot be created or written.
+        """
         profile = self.profile
         row = {
             'timestamp': datetime.now(timezone.utc).isoformat(),

@@ -1,4 +1,8 @@
-"""Compose the map library, playback controls, canvas, and inspector."""
+"""Desktop map library, simulation playback, canvas, and inspection window.
+
+The window delegates route planning to a worker and animates completed turns on
+the Qt event thread.
+"""
 
 import sys
 from pathlib import Path
@@ -26,7 +30,20 @@ from fly_in.simulation import Simulation
 
 
 class MainWindow(QMainWindow):
-    """Own one run and reject results from replaced planning jobs."""
+    """Desktop window for map selection, planning, playback, and inspection.
+
+    Attributes:
+        map_root (Path): Directory scanned for map files.
+        output_dir (Path): Directory for generated run output.
+        records_dir (Path): Directory for solver records.
+        solver_name (str): Solver selected for current and future runs.
+        solver_parameters (dict[str, float | int]): Numeric solver parameters.
+        simulation (Simulation | None): Mutable state for the current run.
+        session (RunSession | None): Run metadata and artifact writer.
+        animator (TurnAnimationController): Controller for canvas transitions.
+        canvas (MapGraphicsView): Map topology and drone-marker view.
+        inspector (InspectorDockWidget): Dock for pinned topology details.
+    """
 
     def __init__(
         self, map_root: Path | None = None,
@@ -35,7 +52,22 @@ class MainWindow(QMainWindow):
         animate: bool = True,
         solver_parameters: dict[str, float | int] | None = None,
     ) -> None:
-        """Create the desktop shell, optionally loading a map paused."""
+        """Create the desktop shell and optionally load a map paused.
+
+        Args:
+            map_root (Path | None): Map library directory; defaults to
+                ``cwd/maps``.
+            initial_map (Path | None): Optional map file to load after scanning
+                the library.
+            solver_name (str): Solver registry name used to plan each run.
+            output_dir (Path | None): Run artifact directory; defaults to
+                ``cwd/out``.
+            records_dir (Path | None): Solver record directory; defaults to
+                ``cwd/records``.
+            animate (bool): Whether to interpolate movement between turns.
+            solver_parameters (dict[str, float | int] | None): Optional numeric
+                solver settings.
+        """
         super().__init__()
         self.catalog = MapCatalog()
         self.map_root = (map_root or Path.cwd() / "maps").resolve()
@@ -93,7 +125,7 @@ class MainWindow(QMainWindow):
                 self.load_selected_map()
 
     def _build_ui(self) -> None:
-        """Compose the library, workspace, and application actions."""
+        """Compose the map library, workspace, menus, and shortcuts."""
         central = QWidget()
         root_layout = QVBoxLayout(central)
         root_layout.setContentsMargins(0, 0, 0, 0)
@@ -133,7 +165,12 @@ class MainWindow(QMainWindow):
         self.addAction(reload_action)
 
     def _build_sidebar(self) -> QWidget:
-        """Build the map picker and simulation controls."""
+        """Build the map picker and simulation controls.
+
+        Returns:
+            QWidget: Sidebar widget containing the map library and playback
+                controls.
+        """
         sidebar = QWidget()
         sidebar.setObjectName("sidebar")
         sidebar.setMinimumWidth(260)
@@ -249,7 +286,11 @@ class MainWindow(QMainWindow):
         return sidebar
 
     def _build_workspace(self) -> QWidget:
-        """Build the canvas, topology summary, and legend."""
+        """Build the canvas, topology summary, and legend.
+
+        Returns:
+            QWidget: Workspace widget containing the map canvas and footer.
+        """
         workspace = QWidget()
         workspace.setObjectName("workspace")
         layout = QVBoxLayout(workspace)
@@ -305,7 +346,7 @@ class MainWindow(QMainWindow):
         return workspace
 
     def reload_maps(self) -> None:
-        """Cancel the active session and rescan the map library."""
+        """Cancel the active run and rescan the configured map directory."""
         self._discard_session()
         self.root_label.setText(str(self.map_root))
         self.root_label.setToolTip(str(self.map_root))
@@ -365,7 +406,7 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("No map files found.")
 
     def choose_map_folder(self) -> None:
-        """Select a new library directory through a file dialog."""
+        """Prompt for a library directory and rescan it when selected."""
         folder = QFileDialog.getExistingDirectory(
             self, "Choose map folder", str(self.map_root)
         )
@@ -374,7 +415,7 @@ class MainWindow(QMainWindow):
             self.reload_maps()
 
     def _selection_changed(self) -> None:
-        """Publish the current selection without starting a run."""
+        """Update the selected entry and display its validation summary."""
         items = self.map_tree.selectedItems()
         if not items:
             self.selected_entry = None
@@ -401,7 +442,7 @@ class MainWindow(QMainWindow):
             )
 
     def load_selected_map(self) -> None:
-        """Load a valid map at Turn 0 without starting playback."""
+        """Load the selected valid map at Turn 0 without starting playback."""
         entry = self.selected_entry
         if entry is None or entry.config is None:
             return
@@ -416,7 +457,13 @@ class MainWindow(QMainWindow):
     def _load_config(
         self, config: MapConfig, path: Path, source: bytes
     ) -> None:
-        """Replace this run and prepare an isolated worker state."""
+        """Replace the active run and prepare isolated worker state.
+
+        Args:
+            config (MapConfig): Parsed map topology for the new run.
+            path (Path): Source map path used for display and run metadata.
+            source (bytes): Original UTF-8 map bytes retained with the run.
+        """
         try:
             simulation = Simulation.from_config(
                 config, SolverFactory(
@@ -466,7 +513,7 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def _collect_workers(self) -> None:
-        """Release only threads whose work has finished."""
+        """Delete finished worker objects later and retain active ones."""
         retained = []
         for worker in self._workers:
             if worker.isFinished():
@@ -479,7 +526,13 @@ class MainWindow(QMainWindow):
     def _prepared(
         self, generation: int, result: object, elapsed: float
     ) -> None:
-        """Adopt a worker result only if it belongs to the current map."""
+        """Adopt a prepared simulation only if its generation is current.
+
+        Args:
+            generation (int): Worker generation associated with this result.
+            result (object): Prepared simulation object emitted by the worker.
+            elapsed (float): Planning duration in seconds.
+        """
         if generation != self._generation or self._closed:
             return
         if not isinstance(result, Simulation):
@@ -508,7 +561,12 @@ class MainWindow(QMainWindow):
 
     @Slot(int, str)
     def _planning_failed(self, generation: int, message: str) -> None:
-        """Report a planning error without enabling playback."""
+        """Report a planning error for the current worker generation.
+
+        Args:
+            generation (int): Worker generation associated with the error.
+            message (str): Error text to show in the status bar and run record.
+        """
         if generation == self._generation and not self._closed:
             for worker in self._workers:
                 if (worker.generation == generation
@@ -523,7 +581,7 @@ class MainWindow(QMainWindow):
             self._stop_with_error(message)
 
     def _discard_session(self) -> None:
-        """Cancel old callbacks and record an unfinished run once."""
+        """Invalidate old callbacks, cancel work, and clear the current run."""
         self._generation += 1
         self._playing = False
         self._ready = False
@@ -555,7 +613,7 @@ class MainWindow(QMainWindow):
             label.setText("—")
 
     def _toggle_playback(self) -> None:
-        """Start, resume, or pause the animation and turn chain."""
+        """Start, resume, or pause playback when planning is ready."""
         if not self._ready or self._stopped:
             return
         if self._playing or (
@@ -579,20 +637,30 @@ class MainWindow(QMainWindow):
             self._advance_turn()
 
     def _update_play_speed(self, value: int | None = None) -> None:
-        """Apply the selected duration to subsequent turns."""
+        """Update the display for the chosen per-turn duration.
+
+        Args:
+            value (int | None): Duration in milliseconds from the slider
+                signal, or None to read the slider's current value.
+        """
         duration = self.speed_slider.value() if value is None else value
         self.speed_label.setText(
             f"{duration} ms / turn ({1000 / duration:.1f}x)"
         )
 
     def _style_play_button(self, playing: bool) -> None:
-        """Keep the primary action's color in sync with its state."""
+        """Set the play button's dynamic playing style.
+
+        Args:
+            playing (bool): Whether the button should use its active
+                appearance.
+        """
         self.play_button.setProperty("playing", playing)
         self.play_button.style().unpolish(self.play_button)
         self.play_button.style().polish(self.play_button)
 
     def _step_simulation(self) -> None:
-        """Animate one turn when ready and not already playing."""
+        """Advance one turn when ready and not already playing."""
         if not self._ready or self._stopped or self._playing:
             return
         if self.animator.is_paused:
@@ -606,7 +674,7 @@ class MainWindow(QMainWindow):
         self._advance_turn()
 
     def _advance_turn(self) -> None:
-        """Commit a legal turn and animate its visual transition."""
+        """Commit one legal turn and animate toward its resulting positions."""
         simulation = self.simulation
         if simulation is None or self._stopped or not self._ready:
             return
@@ -635,7 +703,7 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def _turn_finished(self) -> None:
-        """Refresh completed-turn visuals and queue autoplay safely."""
+        """Refresh the displayed snapshot and queue autoplay after a turn."""
         simulation = self.simulation
         if simulation is None or self._closed:
             return
@@ -665,12 +733,22 @@ class MainWindow(QMainWindow):
             self.simulation_state.setText("Paused")
 
     def _next_turn(self, generation: int) -> None:
-        """Ignore callbacks belonging to a replaced session."""
+        """Advance playback only when the scheduled generation is current.
+
+        Args:
+            generation (int): Session generation captured when queuing the
+                callback.
+        """
         if generation == self._generation and self._playing:
             self._advance_turn()
 
     def _stop_with_error(self, message: str) -> None:
-        """Stop a failed run and save its partial history."""
+        """Stop a failed run, save partial history, and show the error.
+
+        Args:
+            message (str): Failure detail shown in the status bar and run
+                record.
+        """
         self._playing = False
         self._stopped = True
         self.animator.cancel()
@@ -682,7 +760,13 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(message)
 
     def _save_run(self, status: RunStatus, error: str | None = None) -> None:
-        """Use the same idempotent record writer as terminal execution."""
+        """Finalize the active run using its idempotent artifact writer.
+
+        Args:
+            status (RunStatus): Final run status such as completed, failed, or
+                cancelled.
+            error (str | None): Optional failure detail stored with the run.
+        """
         if self.session is None or self.simulation is None:
             return
         try:
@@ -699,14 +783,14 @@ class MainWindow(QMainWindow):
                 )
 
     def _reset_simulation(self) -> None:
-        """Recreate the fleet from the loaded config without file I/O."""
+        """Recreate the current fleet from its loaded map without file I/O."""
         if self.loaded_config is not None and self.loaded_map_path is not None:
             self._load_config(
                 self.loaded_config, self.loaded_map_path, self._source_bytes
             )
 
     def _refresh_simulation_stats(self) -> None:
-        """Show counts from the last completed visual turn."""
+        """Show fleet counts and progress for the current simulation state."""
         simulation = self.simulation
         if simulation is None:
             return
@@ -724,7 +808,7 @@ class MainWindow(QMainWindow):
         self.progress.setFormat(f"{delivered} / {total} delivered (%p%)")
 
     def _capture_display_state(self) -> None:
-        """Keep inspection aligned with the last completed visual turn."""
+        """Copy completed-turn occupancy and traffic for the inspector."""
         current = self.simulation
         if current is None or self.loaded_config is None:
             self._display_simulation = None
@@ -751,7 +835,12 @@ class MainWindow(QMainWindow):
         self.inspector.refresh(snapshot)
 
     def _object_selected(self, object_type: str, name: str) -> None:
-        """Pin a canvas object independently of hover events."""
+        """Pin a canvas object and update the inspection prompt.
+
+        Args:
+            object_type (str): Stored item kind, such as hub or connection.
+            name (str): Stable zone or connection identifier.
+        """
         self.inspector.select_object(object_type, name)
         self.inspector.refresh(self._display_simulation)
         self.selection_detail.setText(
@@ -764,14 +853,18 @@ class MainWindow(QMainWindow):
         self.canvas.fit_map()
 
     def show_inspector(self) -> None:
-        """Restore a hidden inspector while keeping its pinned selection."""
+        """Show the inspector and refresh its pinned completed-turn details."""
         self.inspector.show()
         self.inspector.raise_()
         self.inspector.activateWindow()
         self.inspector.refresh(self._display_simulation)
 
     def closeEvent(self, event: QCloseEvent) -> None:
-        """Cancel and join workers before destroying their Qt owners."""
+        """Cancel work and wait for worker threads before closing the window.
+
+        Args:
+            event (QCloseEvent): Close event passed by Qt.
+        """
         self._closed = True
         self._discard_session()
         for worker in self._workers:
@@ -780,7 +873,17 @@ class MainWindow(QMainWindow):
 
 
 class DesktopApplication:
-    """Own QApplication and the window for one desktop invocation."""
+    """Desktop application owner for QApplication and its main window.
+
+    Attributes:
+        argv (list[str]): Argument vector used to create QApplication.
+        map_root (Path | None): Optional map library directory.
+        initial_map (Path | None): Optional map file loaded on startup.
+        solver_name (str): Solver registry name passed to each run.
+        output_dir (Path | None): Optional generated-run directory.
+        records_dir (Path | None): Optional solver-record directory.
+        solver_parameters (dict[str, float | int]): Numeric solver options.
+    """
 
     def __init__(
         self, map_root: Path | None = None,
@@ -789,7 +892,20 @@ class DesktopApplication:
         solver_parameters: dict[str, float | int] | None = None,
         argv: list[str] | None = None,
     ) -> None:
-        """Capture desktop launch options without creating or preparing Qt."""
+        """Capture desktop launch options without initializing Qt.
+
+        Args:
+            map_root (Path | None): Optional map library directory.
+            initial_map (Path | None): Optional map file to load on launch.
+            solver_name (str): Solver registry name for the run.
+            output_dir (Path | None): Optional output directory for run
+                artifacts.
+            records_dir (Path | None): Optional directory for solver records.
+            solver_parameters (dict[str, float | int] | None): Optional numeric
+                solver settings.
+            argv (list[str] | None): Qt command-line arguments; defaults to
+                ``sys.argv``.
+        """
         self.argv = list(sys.argv if argv is None else argv)
         self.map_root = map_root
         self.initial_map = initial_map
@@ -799,7 +915,11 @@ class DesktopApplication:
         self.solver_parameters = dict(solver_parameters or {})
 
     def run(self) -> int:
-        """Launch the map library and keep its window alive during playback."""
+        """Launch the map library and run the Qt event loop.
+
+        Returns:
+            int: Exit status returned by the Qt application event loop.
+        """
         app = QApplication.instance() or QApplication(self.argv)
         app.setApplicationName("Fly-In Drones")
         window = MainWindow(
@@ -812,5 +932,5 @@ class DesktopApplication:
 
 
 def main() -> None:
-    """Delegate the desktop command to its application owner."""
+    """Launch the desktop application and exit with its status."""
     sys.exit(DesktopApplication().run())

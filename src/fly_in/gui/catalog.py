@@ -1,3 +1,5 @@
+"""Map-file discovery and validation for the desktop library."""
+
 from dataclasses import dataclass
 import os
 from pathlib import Path
@@ -11,7 +13,15 @@ IGNORED_DIRECTORIES = {".git", ".venv", "__pycache__", "build", "dist"}
 
 @dataclass(frozen=True)
 class MapFile:
-    """A discovered map file and its validation result."""
+    """A discovered map file and its validation result.
+
+    Attributes:
+        path (Path): Absolute path to the map file.
+        relative_path (str): POSIX path relative to the scanned root.
+        config (MapConfig | None): Parsed configuration, or None on failure.
+        error (str | None): Parse or I/O failure text, when the file is
+            invalid.
+    """
 
     path: Path
     relative_path: str
@@ -20,19 +30,47 @@ class MapFile:
 
     @property
     def is_valid(self) -> bool:
-        """Return whether this catalog entry parsed successfully."""
+        """Whether parsing produced a map configuration.
+
+        Returns:
+            bool: True when ``config`` is present.
+        """
         return self.config is not None
 
 
 class MapCatalog:
-    """Discover and validate map files below a selected directory."""
+    """Recursive discovery and validation of map files below a directory.
+
+    Attributes:
+        _parser (Parser): Parser used to load each discovered text map.
+    """
 
     def __init__(self, parser: Parser | None = None) -> None:
-        """Create a catalog using the supplied or default parser."""
+        """Create a catalog using the supplied or default parser.
+
+        Args:
+            parser (Parser | None): Parser to use, or None to construct the
+                default parser.
+        """
         self._parser = parser or Parser()
 
     def scan(self, root: str | Path) -> list[MapFile]:
-        """Discover UTF-8 text maps recursively and retain parsing errors."""
+        """Discover UTF-8 text maps recursively and retain parsing errors.
+
+        Hidden directories and known build or environment directories are
+        skipped. Invalid map files remain in the results with their error.
+
+        Args:
+            root (str | Path): Directory to scan; user-home markers are
+                expanded.
+
+        Returns:
+            list[MapFile]: Entries sorted by their POSIX path relative to
+            ``root``.
+
+        Raises:
+            NotADirectoryError: If the resolved root is not a directory.
+        """
         root_path = Path(root).expanduser().resolve()
         if not root_path.is_dir():
             raise NotADirectoryError(f"Map folder does not exist: {root_path}")

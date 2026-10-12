@@ -1,3 +1,5 @@
+"""Read map files and convert their records into validated map models."""
+
 import re
 from pathlib import Path
 from typing import Any, TypeVar
@@ -16,10 +18,21 @@ ModelT = TypeVar("ModelT", bound=BaseModel)
 
 
 class Parser:
-    """Parse map files into validated, simulation-ready configuration."""
+    """Map-file parser producing validated, simulation-ready configuration."""
 
     def parse(self, filename: str | Path) -> MapConfig:
-        """Read and validate a map configuration file."""
+        """Read and validate a map configuration file.
+
+        Args:
+            filename (str | Path): UTF-8 map file to read.
+
+        Returns:
+            MapConfig: Validated simulation configuration.
+
+        Raises:
+            ConfigParseError: If the file cannot be read or its contents are
+                invalid.
+        """
         try:
             text = Path(filename).read_text(encoding="utf-8")
         except (OSError, UnicodeError) as error:
@@ -29,7 +42,18 @@ class Parser:
         return self.parse_text(text)
 
     def parse_text(self, text: str) -> MapConfig:
-        """Parse configuration text, reporting errors against source lines."""
+        """Parse map text and report invalid records with source line numbers.
+
+        Args:
+            text (str): Map configuration contents.
+
+        Returns:
+            MapConfig: Validated simulation configuration.
+
+        Raises:
+            ConfigParseError: If the text is empty, malformed, incomplete, or
+                internally inconsistent.
+        """
         records = [
             (line_number, content.split("#", 1)[0].strip())
             for line_number, content in enumerate(text.splitlines(), start=1)
@@ -208,7 +232,20 @@ class Parser:
     def _split_metadata(
         body: str, line_number: int, primary_fields: int
     ) -> tuple[str, str | None]:
-        """Separate trailing metadata without consuming brackets in names."""
+        """Separate trailing metadata without consuming name brackets.
+
+        Args:
+            body (str): Text following a map record's colon.
+            line_number (int): Physical source line used in diagnostics.
+            primary_fields (int): Number of primary fields before metadata.
+
+        Returns:
+            tuple[str, str | None]: Primary text and metadata contents, or
+                ``None`` when no metadata block is present.
+
+        Raises:
+            ConfigParseError: If trailing text is not one bracketed block.
+        """
         parts = body.split(maxsplit=primary_fields)
         if len(parts) <= primary_fields:
             return body, None
@@ -223,7 +260,18 @@ class Parser:
 
     @staticmethod
     def _parse_metadata(raw: str | None, line_number: int) -> dict[str, str]:
-        """Validate known, unique key=value metadata entries."""
+        """Parse known, unique ``key=value`` metadata entries.
+
+        Args:
+            raw (str | None): Bracket contents, or ``None`` if absent.
+            line_number (int): Physical source line used in diagnostics.
+
+        Returns:
+            dict[str, str]: Metadata values keyed by field name.
+
+        Raises:
+            ConfigParseError: If an item is malformed, unknown, or repeated.
+        """
         if raw is None:
             return {}
         values: dict[str, str] = {}
@@ -250,7 +298,19 @@ class Parser:
     def _parse_zone_coordinates(
         primary: str, line_number: int
     ) -> tuple[str, int, int]:
-        """Parse a hub name and two exact integer coordinates."""
+        """Parse a hub name and two exact integer coordinates.
+
+        Args:
+            primary (str): Primary zone fields, excluding metadata.
+            line_number (int): Physical source line used in diagnostics.
+
+        Returns:
+            tuple[str, int, int]: Zone name and its x and y coordinates.
+
+        Raises:
+            ConfigParseError: If the field count, coordinate spelling, or
+                zone-name syntax is invalid.
+        """
         parts = primary.split()
         if len(parts) != 3:
             raise ConfigParseError(
@@ -281,7 +341,20 @@ class Parser:
         line_number: int,
         defined_names: set[str],
     ) -> RouteSpec:
-        """Validate a link against previously declared endpoints."""
+        """Validate a link against previously declared endpoints.
+
+        Args:
+            primary (str): Endpoint names separated by one hyphen.
+            values (dict[str, str]): Parsed metadata fields.
+            line_number (int): Physical source line used in diagnostics.
+            defined_names (set[str]): Zone names declared before this link.
+
+        Returns:
+            RouteSpec: Validated bidirectional connection.
+
+        Raises:
+            ConfigParseError: If metadata, endpoints, or capacity are invalid.
+        """
         if set(values) - {"max_link_capacity"}:
             invalid = sorted(set(values) - {"max_link_capacity"})[0]
             raise ConfigParseError(
@@ -334,7 +407,20 @@ class Parser:
         line_number: int,
         kind: str,
     ) -> ModelT:
-        """Convert model errors into a line-specific configuration error."""
+        """Validate values and convert model errors to source diagnostics.
+
+        Args:
+            model (type[ModelT]): Pydantic model to instantiate.
+            values (dict[str, Any]): Candidate model fields.
+            line_number (int): Physical source line used in diagnostics.
+            kind (str): Map record kind named in any error message.
+
+        Returns:
+            ModelT: Validated instance of ``model``.
+
+        Raises:
+            ConfigParseError: If model validation fails.
+        """
         try:
             return model.model_validate(values)
         except ValidationError as error:

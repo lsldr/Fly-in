@@ -18,7 +18,20 @@ def _network(
     branches: int = 1, capacity: int = 1, link_capacity: int = 1,
     restricted: bool = False,
 ) -> DroneNetwork:
-    """Construct short parallel routes without using solver primitives."""
+    """Construct short parallel routes without using solver primitives.
+
+    Args:
+        branches (int): Number of parallel intermediate routes in the generated
+            network.
+        capacity (int): Capacity assigned to each intermediate hub.
+        link_capacity (int): Per-turn capacity assigned to each generated
+            connection.
+        restricted (bool): Whether intermediate hubs have two-turn entry
+            duration.
+
+    Returns:
+        DroneNetwork: Topology built from the generated hubs and connections.
+    """
     start = Zone('s', 0, 0, max_drones=None)
     end = Zone('g', 2, 0, max_drones=None)
     zones = {'s': start, 'g': end}
@@ -37,7 +50,15 @@ def _network(
 
 
 def _serial_seed(network: DroneNetwork, drones: int) -> Solution:
-    """Build a deliberately loose feasible incumbent to exercise CT search."""
+    """Build a deliberately loose feasible incumbent to exercise CT search.
+
+    Args:
+        network (DroneNetwork): Topology used to build the independent paths.
+        drones (int): Number of paths to separate with start-hub waits.
+
+    Returns:
+        Solution: Feasible paths separated by waits to provide a loose floor.
+    """
     engine = SpaceTimeAStar(network)
     paths = {}
     offset = 0
@@ -66,7 +87,20 @@ def test_icbs_matches_exhaustive_joint_oracle(
     branches: int, capacity: int, link_capacity: int, restricted: bool,
     drones: int,
 ) -> None:
-    """Prove small makespans including capacity two and released transit."""
+    """Prove small makespans including capacity two and released transit.
+
+    Args:
+        branches (int): Number of parallel intermediate routes in the generated
+            network.
+        capacity (int): Capacity shared by generated intermediate hubs and
+            connections.
+        link_capacity (int): Per-turn capacity assigned to each generated
+            connection.
+        restricted (bool): Whether intermediate hubs have two-turn entry
+            duration.
+        drones (int): Fleet size used to build and solve the generated
+            topology.
+    """
     network = _network(branches, capacity, link_capacity, restricted)
     result = ICBSSolver(time_budget=10).solve(
         network, [f'D{i+1}' for i in range(drones)],
@@ -105,7 +139,13 @@ def test_capacity_two_conflict_has_three_children() -> None:
 def test_classification_compares_makespan_bounds(
     bounds: list[int | None], expected: str,
 ) -> None:
-    """Unchanged global makespan is not cardinal just because a path grew."""
+    """Unchanged global makespan is not cardinal just because a path grew.
+
+    Args:
+        bounds (list[int | None]): Child makespan bounds used to classify a
+            conflict.
+        expected (str): Conflict class expected for the supplied child bounds.
+    """
     assert ConflictAssessment(5, bounds).classification() == expected
 
 
@@ -169,7 +209,11 @@ def test_cancellation_is_not_swallowed_as_a_timeout() -> None:
 
 @pytest.mark.parametrize('seconds', [-1, float('inf'), float('nan')])
 def test_invalid_time_budget_is_rejected(seconds: float) -> None:
-    """Invalid deadlines must not produce unlimited searches accidentally."""
+    """Invalid deadlines must not produce unlimited searches accidentally.
+
+    Args:
+        seconds (float): Invalid duration passed to the solver constructor.
+    """
     with pytest.raises(ValueError):
         ICBSSolver(time_budget=seconds)
 

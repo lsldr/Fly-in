@@ -10,10 +10,21 @@ from fly_in.simulation import Simulation
 
 
 class InspectorDockWidget(QDockWidget):
-    """Show details for one selected hub or undirected connection."""
+    """Dock widget for one selected hub or undirected connection.
+
+    Attributes:
+        config (MapConfig | None): Topology currently displayed, if loaded.
+        selection (tuple[str, str] | None): Pinned object kind and identifier.
+        fields (dict[str, QLabel]): Form labels indexed by field name.
+        placeholder (QLabel): Prompt shown when no object is selected.
+    """
 
     def __init__(self, parent: QWidget | None = None) -> None:
-        """Create a movable, closable inspector with selectable text."""
+        """Create a movable, closable inspector with selectable text.
+
+        Args:
+            parent (QWidget | None): Optional Qt owner for this dock widget.
+        """
         super().__init__("Inspector", parent)
         self.setObjectName("inspectorDock")
         self.setMinimumWidth(290)
@@ -43,19 +54,38 @@ class InspectorDockWidget(QDockWidget):
         self._simulation: Simulation | None = None
 
     def set_config(self, config: MapConfig | None) -> None:
-        """Replace topology and clear any pinned selection."""
+        """Replace topology and clear any pinned selection.
+
+        Args:
+            config (MapConfig | None): New map topology, or None to clear the
+                inspector.
+        """
         self.config = config
         self.selection = None
         self._simulation = None
         self.refresh(None)
 
     def select_object(self, kind: str, name: str) -> None:
-        """Pin a hub or connection using its stable topology identifier."""
+        """Pin a hub or connection by its stable topology identifier.
+
+        Args:
+            kind (str): Object kind, normally ``hub`` or ``connection``.
+            name (str): Zone name or canonical undirected connection
+                identifier.
+        """
         self.selection = (kind, name)
         self.refresh(self._simulation)
 
     def _field(self, title: str, value: str) -> QLabel:
-        """Add a selectable value without interpreting map text as HTML."""
+        """Add a selectable plain-text value row to the form.
+
+        Args:
+            title (str): Visible field label and key in ``fields``.
+            value (str): Plain text displayed for the field.
+
+        Returns:
+            QLabel: The created selectable label.
+        """
         label = QLabel(value)
         label.setTextFormat(Qt.TextFormat.PlainText)
         label.setTextInteractionFlags(
@@ -67,7 +97,12 @@ class InspectorDockWidget(QDockWidget):
         return label
 
     def refresh(self, simulation: Simulation | None) -> None:
-        """Refresh the pinned object's live post-turn state."""
+        """Refresh the pinned object's state from the supplied snapshot.
+
+        Args:
+            simulation (Simulation | None): Post-turn snapshot for occupancy
+                and traffic, or None to show topology only.
+        """
         self._simulation = simulation
         while self.form.rowCount():
             self.form.removeRow(0)
@@ -83,7 +118,13 @@ class InspectorDockWidget(QDockWidget):
         self.placeholder.setVisible(not bool(self.fields))
 
     def _hub(self, name: str, simulation: Simulation | None) -> None:
-        """Render hub properties and post-turn occupancy."""
+        """Render hub properties and post-turn occupancy.
+
+        Args:
+            name (str): Zone name to find in the loaded map.
+            simulation (Simulation | None): Completed-turn state, or None to
+                omit live occupants.
+        """
         assert self.config is not None
         config = self.config
         spec = next((zone for zone in
@@ -119,7 +160,11 @@ class InspectorDockWidget(QDockWidget):
                     and len(occupants) >= capacity else "Available")
 
     def _color_field(self, color: str) -> None:
-        """Show a circular swatch beside an always-readable color name."""
+        """Show a circular swatch beside an always-readable color name.
+
+        Args:
+            color (str): Configured color text, or ``Default`` when unset.
+        """
         holder = QWidget()
         row = QHBoxLayout(holder)
         row.setContentsMargins(0, 0, 0, 0)
@@ -140,7 +185,13 @@ class InspectorDockWidget(QDockWidget):
         self.fields["Color"] = text
 
     def _link(self, name: str, simulation: Simulation | None) -> None:
-        """Distinguish traffic during the turn from drones still in transit."""
+        """Show link capacity, turn traffic, and drones still in transit.
+
+        Args:
+            name (str): Canonical connection ID or configured route name.
+            simulation (Simulation | None): Completed-turn state, or None to
+                omit live counts.
+        """
         assert self.config is not None
         route = next((route for route in self.config.connections
                       if "-".join(sorted((route.from_hub, route.to_hub)))

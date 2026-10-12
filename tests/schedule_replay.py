@@ -8,20 +8,39 @@ from fly_in.models import MapConfig, ZoneType
 
 @dataclass(frozen=True)
 class ReplayResult:
-    """Physical cost and deliveries obtained solely from movement rows."""
+    """Physical cost and deliveries reconstructed from emitted movements.
+
+    Attributes:
+        cost (int): Sum of movement durations, excluding waits.
+        arrivals (dict[str, int]): Drone IDs mapped to their delivery turns,
+            starting at turn 1.
+    """
 
     cost: int
     arrivals: dict[str, int]
 
 
 def replay(config: MapConfig, history: list[list[str]]) -> ReplayResult:
-    """Check every emitted movement, forced arrival, wait and capacity.
+    """Validate emitted movements independently of the scheduling code.
 
-    Only input declarations and output rows are read. Neither Simulation
-    state, TimedPath, reservations, ConflictDetector nor flow code is used.
-    Restricted transit is one emitted link row followed by a forced hub row.
-    Arrivals free links for new entries on that turn. Opposing departures
-    share the same link count; hub occupancy is counted after all moves.
+    Read only map declarations and output rows. Restricted transit requires
+    one link token followed by a hub token on the next turn. Arrivals release
+    links for departures on that turn; opposing departures share link
+    capacity, and hub occupancy is checked after simultaneous moves.
+
+    Args:
+        config (MapConfig): Validated map that defines the fleet and
+            capacities.
+        history (list[list[str]]): Movement tokens grouped by turn, starting
+            at turn 1. Empty rows represent idle turns.
+
+    Returns:
+        ReplayResult: Total physical movement cost and each drone's arrival
+        turn after all drones reach the goal.
+
+    Raises:
+        AssertionError: A movement, capacity, mandatory arrival, or completion
+            condition is invalid, including rows after fleet delivery.
     """
     zones = {zone.name: zone
              for zone in (config.start, *config.zones, config.end)}

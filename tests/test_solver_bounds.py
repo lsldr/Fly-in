@@ -19,7 +19,14 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def _profile(text: str) -> InstanceProfile:
-    """Parse a self-contained fixture and calculate its static bounds."""
+    """Parse a self-contained fixture and calculate its static bounds.
+
+    Args:
+        text (str): Map declaration text used to build a fresh test topology.
+
+    Returns:
+        InstanceProfile: Static bounds computed for the fixture map.
+    """
     config = Parser().parse_text(text)
     return NetworkProfiler(DroneNetwork.from_config(config)).profile(
         config.nb_drones,
@@ -186,7 +193,12 @@ def test_analyzer_json_is_machine_readable() -> None:
 
 
 def test_analyzer_rejects_unreachable_map(tmp_path: Path) -> None:
-    """Expected input errors use a concise message without a traceback."""
+    """Expected input errors use a concise message without a traceback.
+
+    Args:
+        tmp_path (Path): Pytest temporary directory used for logs or generated
+            input.
+    """
     map_path = tmp_path / "disconnected.txt"
     map_path.write_text(
         "nb_drones: 1\nstart_hub: s 0 0\nend_hub: g 1 0\n",
@@ -203,7 +215,11 @@ def test_analyzer_rejects_unreachable_map(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("seed", range(24))
 def test_bound_does_not_exceed_independent_joint_optimum(seed: int) -> None:
-    """Cross-check small mixed-capacity maps against exhaustive joint BFS."""
+    """Cross-check small mixed-capacity maps against exhaustive joint BFS.
+
+    Args:
+        seed (int): Fixed random seed used to generate this map.
+    """
     random = Random(seed)
     fleet = 1 + seed % 3
     lines = [f"nb_drones: {fleet}", "start_hub: s 0 0", "end_hub: g 3 0"]

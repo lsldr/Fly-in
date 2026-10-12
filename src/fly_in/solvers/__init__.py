@@ -1,3 +1,5 @@
+"""Public solver implementations and their structural interfaces."""
+
 from fly_in.solvers.protocol import PreparableSolver, Schedule, Solver
 from fly_in.solvers.greedy import GreedySolver
 from fly_in.solvers.prioritized import PriorityBasedSolver, PrioritizedPlanner

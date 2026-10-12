@@ -30,13 +30,31 @@ LABELS = {
 
 
 class BenchmarkLadder:
-    """Compare configured strategies while preserving report provenance."""
+    """A comparison of selected solvers over a map catalog.
+
+    Attributes:
+        map_root (Path): Root of the map catalog searched recursively.
+        records_root (Path): Destination for component and combined reports.
+        time_budget (float): Planning budget in seconds passed to each solver.
+        export_markdown (bool): Whether to save the printed comparison table.
+        strategies (tuple[str, ...]): Solver order, also used to break ties.
+    """
 
     def __init__(
         self, map_root: Path, records_root: Path, time_budget: float,
         export_markdown: bool, strategies: tuple[str, ...] = STRATEGIES,
     ) -> None:
-        """Capture catalog, destinations, limits, and measured solver order."""
+        """Capture the catalog, report settings, and solver order.
+
+        Args:
+            map_root (Path): Map catalog directory.
+            records_root (Path): Destination for benchmark and solver records.
+            time_budget (float): Planning budget in seconds for each solver.
+            export_markdown (bool): Whether to save a Markdown comparison
+                table.
+            strategies (tuple[str, ...]): Solver names in comparison order;
+                defaults to the six heuristic strategies in STRATEGIES.
+        """
         self.map_root = map_root
         self.records_root = records_root
         self.time_budget = time_budget
@@ -44,7 +62,16 @@ class BenchmarkLadder:
         self.strategies = strategies
 
     def _cell(self, row: dict[str, object]) -> str:
-        """Format one measured result without claiming unproved optimality."""
+        """Format a result with its measured cost and proof or cutoff status.
+
+        Args:
+            row (dict[str, object]): Result row from BenchmarkRunner.
+
+        Returns:
+            str: Turn count and physical path cost, with an optimality or
+                cutoff
+            suffix when present; "failed" for an incomplete run.
+        """
         if row.get('status') != 'completed':
             return 'failed'
         value = f"{row['turns']} / {row['total_path_cost']}"
@@ -55,7 +82,24 @@ class BenchmarkLadder:
         return value
 
     def run(self) -> tuple[dict[str, object], Path, Path | None]:
-        """Run selected strategies (all six by default) and render results."""
+        """Benchmark selected strategies and persist the comparison reports.
+
+        Print the Markdown table and report paths to stdout. Select each winner
+        by turn count, then physical path cost, then the configured solver
+        order.
+        Individual map failures remain in the component reports.
+
+        Returns:
+            tuple[dict[str, object], Path, Path | None]: Combined JSON-
+                compatible
+            report, saved JSON path, and Markdown path, or None if export is
+            off.
+
+        Raises:
+            ValueError: No strategy was selected, a solver name is unsupported,
+                or the catalog contains no text maps.
+            OSError: A component or combined report cannot be persisted.
+        """
         strategies = self.strategies
         if not strategies or any(
             name not in SOLVER_CHOICES for name in strategies
@@ -137,10 +181,18 @@ class BenchmarkLadder:
 
 
 class LadderApplication:
-    """Own comparative benchmark argument handling and execution."""
+    """Command-line options for comparing catalog benchmark results.
+    """
 
     def run(self) -> None:
-        """Parse the comparative benchmark command."""
+        """Parse sys.argv, run catalog benchmarks, and print the comparison.
+
+        Raises:
+            SystemExit: Help was requested (code 0) or arguments are invalid
+                (code 2), including a negative time budget.
+            ValueError: The benchmark configuration is invalid.
+            OSError: A benchmark report cannot be persisted.
+        """
         parser = argparse.ArgumentParser(description=__doc__)
         parser.add_argument('--map-root', type=Path, default=Path('maps'))
         parser.add_argument('--records-root', type=Path,
@@ -160,7 +212,13 @@ class LadderApplication:
 
 
 def main() -> None:
-    """Delegate the ladder command to its application owner."""
+    """Run the comparative benchmark application using sys.argv.
+
+    Raises:
+        SystemExit: Help was requested or command-line arguments are invalid.
+        ValueError: The benchmark configuration is invalid.
+        OSError: A benchmark report cannot be persisted.
+    """
     LadderApplication().run()
 
 

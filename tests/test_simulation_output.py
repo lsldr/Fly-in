@@ -1,3 +1,5 @@
+"""Movement, rendering, and file-output integration coverage."""
+
 from pathlib import Path
 
 import pytest
@@ -17,11 +19,21 @@ class MixedMovementSolver:
     """Issue one ordinary and one restricted movement together."""
 
     def __init__(self) -> None:
+        """Initialize a solver that emits its scripted row only once."""
         self.planned = False
 
     def plan(
         self, network: DroneNetwork, drones: list[Drone]
     ) -> Schedule:
+        """Return mixed normal and restricted actions on the first call.
+
+        Args:
+            network (DroneNetwork): Network being simulated.
+            drones (list[Drone]): Current fleet; unused by this fixed script.
+
+        Returns:
+            Schedule: One action row on the first call, then an empty row.
+        """
         if self.planned:
             return [[]]
         self.planned = True
@@ -42,6 +54,7 @@ connection: passage-goal
 
 
 def test_mixed_normal_and_restricted_moves_advance_correctly() -> None:
+    """Advance an ordinary move alongside a restricted-link departure."""
     config = Parser().parse_text(MIXED_MOVEMENT_MAP)
     simulation = Simulation.from_config(config, MixedMovementSolver())
 
@@ -63,6 +76,11 @@ def test_mixed_normal_and_restricted_moves_advance_correctly() -> None:
 def test_output_writer_formats_turns_and_overwrites_in_category_tree(
     tmp_path: Path,
 ) -> None:
+    """Format turn rows and replace output under the source category.
+
+    Args:
+        tmp_path (Path): Isolated filesystem root for maps and output.
+    """
     map_root = tmp_path / "maps"
     map_path = map_root / "easy" / "linear.txt"
     map_path.parent.mkdir(parents=True)
@@ -83,6 +101,11 @@ def test_output_writer_formats_turns_and_overwrites_in_category_tree(
 def test_terminal_renderer_shows_colored_moves_and_zone_state(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    """Render movement, zone state, and links to terminal output.
+
+    Args:
+        capsys (pytest.CaptureFixture[str]): Captured stdout and stderr.
+    """
     config: MapConfig = Parser().parse_text(MIXED_MOVEMENT_MAP)
     simulation = Simulation.from_config(config, MixedMovementSolver())
     moves = simulation.step()
@@ -100,6 +123,13 @@ def test_map_picker_lists_nested_category_paths(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    """List category-relative paths and select the indexed map.
+
+    Args:
+        tmp_path (Path): Temporary map-library root.
+        monkeypatch (pytest.MonkeyPatch): Test input substitution fixture.
+        capsys (pytest.CaptureFixture[str]): Captured prompt and menu output.
+    """
     maps = tmp_path / "maps"
     (maps / "easy").mkdir(parents=True)
     (maps / "challenger").mkdir()

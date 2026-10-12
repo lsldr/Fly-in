@@ -12,7 +12,17 @@ from fly_in.simulation import Simulation
 
 
 class TerminalScene:
-    """Render exact counts, falling back to edge rows when geometry crowds."""
+    """Terminal layout of exact counts, with edge rows for crowded geometry.
+
+    Attributes:
+        COLORS (dict[ZoneType, str]): Rich fallback colors by zone type.
+        config (MapConfig): Map configuration whose layout is rendered.
+        zones (list[ZoneSpec]): Zones in start-to-goal display order.
+        indices (dict[str, int]): One-based display indices by zone name.
+        by_name (dict[str, ZoneSpec]): Zone specifications keyed by name.
+        id_digits (int): Minimum width of rendered zone identifiers.
+        count_digits (int): Width reserved for occupancy counts.
+    """
 
     COLORS = {
         ZoneType.NORMAL: "bright_blue",
@@ -22,7 +32,12 @@ class TerminalScene:
     }
 
     def __init__(self, config: MapConfig) -> None:
-        """Assign stable IDs and widths that do not change between turns."""
+        """Assign stable IDs and widths that do not change between turns.
+
+        Args:
+            config (MapConfig): Map topology and coordinates used for terminal
+                layout.
+        """
         self.config = config
         self.zones: list[ZoneSpec] = [
             config.start, *config.zones, config.end,
@@ -37,7 +52,14 @@ class TerminalScene:
 
     @classmethod
     def color(cls, zone: ZoneSpec) -> str:
-        """Honor supported map colors with a safe type-based fallback."""
+        """Honor supported map colors with a type-based fallback.
+
+        Args:
+            zone (ZoneSpec): Zone whose display color is resolved.
+
+        Returns:
+            str: Rich color name or valid configured color string.
+        """
         if zone.color:
             try:
                 Color.parse(zone.color)
@@ -47,7 +69,14 @@ class TerminalScene:
         return cls.COLORS[zone.zone_type]
 
     def _identifier(self, zone: ZoneSpec) -> str:
-        """Encode endpoint or zone type without depending on color."""
+        """Encode endpoint role or zone type in a stable compact token.
+
+        Args:
+            zone (ZoneSpec): Zone to identify by role, type, and display index.
+
+        Returns:
+            str: Letter prefix and zero-padded one-based display index.
+        """
         if zone is self.config.start:
             role = "S"
         elif zone is self.config.end:
@@ -59,7 +88,15 @@ class TerminalScene:
         return f"{role}{self.indices[zone.name]:0{self.id_digits}d}"
 
     def _hub(self, name: str, occupancy: Counter[str]) -> str:
-        """Format a hub with active occupancy, excluding delivered drones."""
+        """Format a hub token with active occupancy.
+
+        Args:
+            name (str): Zone to identify and count.
+            occupancy (Counter[str]): Current drone counts by zone.
+
+        Returns:
+            str: Bracketed identifier and fixed-width active count.
+        """
         identifier = self._identifier(self.by_name[name])
         return f"[{identifier}:{occupancy[name]:{self.count_digits}d}]"
 
@@ -67,7 +104,20 @@ class TerminalScene:
         self, route: RouteSpec, transit: Counter[tuple[str, str]],
         reserve: bool = False,
     ) -> str:
-        """Format transit counts by destination, independent of traffic."""
+        """Format restricted-zone transit counts independently of traffic.
+
+        Args:
+            route (RouteSpec): Connection whose in-transit drones are counted.
+            transit (Counter[tuple[str, str]]): Counts keyed by canonical edge
+                and destination zone.
+            reserve (bool): Reserve maximum-width labels for all drones, even
+                when the current transit count is zero.
+
+        Returns:
+            str: Empty text when no restricted endpoint label is needed;
+                otherwise
+            a brace-delimited list of destination counts.
+        """
         edge = "-".join(sorted((route.from_hub, route.to_hub)))
         parts = []
         for name in (route.from_hub, route.to_hub):
@@ -83,7 +133,20 @@ class TerminalScene:
     def render(
         self, simulation: Simulation, moves: list[str], width: int,
     ) -> Group:
-        """Render a post-turn scheme; show the name/capacity legend once."""
+        """Render a post-turn scheme and show the legend on the first call.
+
+        Args:
+            simulation (Simulation): Post-turn state supplying occupancy and
+                transit data.
+            moves (list[str]): Movement tokens for the turn; currently unused
+                by the topology scheme but retained by the visualization
+                interface.
+            width (int): Available terminal width in character columns.
+
+        Returns:
+            Group: Heading and network panel; the first call also includes
+                the legend.
+        """
         occupancy: Counter[str] = Counter()
         transit: Counter[tuple[str, str]] = Counter()
         delivered = 0
@@ -116,7 +179,11 @@ class TerminalScene:
         return Group(heading, panel, Text())
 
     def _legend(self) -> Text:
-        """Explain compact tokens and retain exact names and capacities."""
+        """Explain compact tokens and list exact names and capacities.
+
+        Returns:
+            Text: Rich text legend for token meanings and configured zones.
+        """
         legend = Text(
             "[hub:count] = active drones; {count->hub} = in transit, "
             "arriving next turn.\n"
@@ -140,7 +207,16 @@ class TerminalScene:
     def _edge_rows(
         self, occupancy: Counter[str], transit: Counter[tuple[str, str]],
     ) -> Text:
-        """Render every link exactly once, plus any isolated hubs."""
+        """Render every configured link once, plus isolated hubs.
+
+        Args:
+            occupancy (Counter[str]): Counts of drones currently at each zone.
+            transit (Counter[tuple[str, str]]): Counts indexed by connection
+                and restricted destination.
+
+        Returns:
+            Text: Rich text with one line per connection and isolated zone.
+        """
         output = Text()
         connected: set[str] = set()
         for route in self.config.connections:
@@ -169,6 +245,16 @@ class TerminalScene:
 
         Space for every possible restricted-transit label is reserved even at
         Turn 0, keeping the layout independent of changing drone counts.
+
+        Args:
+            occupancy (Counter[str]): Counts of drones currently at each zone.
+            transit (Counter[tuple[str, str]]): Counts indexed by connection
+                and restricted destination.
+            width (int): Available terminal width in character columns.
+
+        Returns:
+            Text | None: Spatial text if all tokens and paths fit; otherwise
+                None when the layout collides or exceeds the available width.
         """
         columns = min(120, width - 6)
         token_width = len(self._hub(self.zones[0].name, occupancy))

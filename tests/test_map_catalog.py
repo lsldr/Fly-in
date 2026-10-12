@@ -1,3 +1,5 @@
+"""Recursive map discovery and parse-error retention checks."""
+
 from pathlib import Path
 
 from fly_in.gui.catalog import MapCatalog
@@ -13,6 +15,11 @@ connection: start-end
 def test_catalog_finds_valid_and_invalid_maps_recursively(
     tmp_path: Path,
 ) -> None:
+    """Discover nested maps, retain invalid entries, and skip hidden folders.
+
+    Args:
+        tmp_path (Path): Pytest temporary directory containing the map tree.
+    """
     maps = tmp_path / "maps"
     nested = maps / "challenge"
     nested.mkdir(parents=True)

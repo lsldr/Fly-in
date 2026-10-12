@@ -1,4 +1,12 @@
-"""Shared Tokyo Night palette and application widget styling."""
+"""Shared Tokyo Night colors and widget styling for the desktop interface.
+
+Attributes:
+    CANVAS (str): Background color used behind map items.
+    TEXT (str): Primary foreground color for labels and controls.
+    MUTED (str): Secondary foreground color for supporting text.
+    ACCENT (str): Highlight color used for focus and interactive elements.
+    STYLESHEET (str): Qt stylesheet applied to the main window and children.
+"""
 
 CANVAS = "#16161e"
 TEXT = "#f8f8f2"

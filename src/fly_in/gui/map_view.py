@@ -18,14 +18,29 @@ from fly_in.simulation import Simulation
 
 
 class MapGraphicsView(QGraphicsView):
-    """Render topology and stable drone slots in normalized coordinates."""
+    """Interactive scene view for topology and stable drone slots.
+
+    Signals:
+        object_selected (Signal[str, str]): Emits object kind and identifier.
+
+    Attributes:
+        NODE_RADIUS (int): Base node radius in scene units.
+        GRID_STEP (int): Scene distance for one map coordinate unit.
+        drone_items (dict[str, QuadcopterItem]): Persistent drone graphics.
+        hub_items (dict[str, HubItem]): Hub graphics keyed by zone name.
+        link_items (dict[str, LinkItem]): Links keyed by canonical identifier.
+    """
 
     object_selected = Signal(str, str)
     NODE_RADIUS = 17
     GRID_STEP = 130
 
     def __init__(self, parent: QWidget | None = None) -> None:
-        """Initialize the scene, selections, and stable slot cache."""
+        """Initialize the scene, selections, and stable slot cache.
+
+        Args:
+            parent (QWidget | None): Optional Qt owner for this graphics view.
+        """
         super().__init__(parent)
         self.setScene(QGraphicsScene(self))
         self.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -47,7 +62,7 @@ class MapGraphicsView(QGraphicsView):
         self._fitting = False
 
     def clear_map(self) -> None:
-        """Clear all items, cached slots, and current selection."""
+        """Clear all scene items, slot assignments, and map selection."""
         self.drone_items.clear()
         self.hub_items.clear()
         self.link_items.clear()
@@ -58,7 +73,14 @@ class MapGraphicsView(QGraphicsView):
         self.scene().clear()
 
     def show_map(self, config: MapConfig) -> None:
-        """Build static topology once and fit its complete item bounds."""
+        """Build the topology and fit its complete item bounds.
+
+        Map coordinates are scaled by ``GRID_STEP`` scene units and the
+        vertical axis is inverted so increasing map y points upward.
+
+        Args:
+            config (MapConfig): Map topology and visual properties to display.
+        """
         self.clear_map()
         self._config = config
         specs = [config.start, *config.zones, config.end]
@@ -102,7 +124,16 @@ class MapGraphicsView(QGraphicsView):
     def _label(
         self, text: str, position: QPointF, color: str,
     ) -> QGraphicsTextItem:
-        """Create a plain-text topology label at a scene position."""
+        """Create a plain-text topology label at a scene position.
+
+        Args:
+            text (str): Label content, rendered without HTML interpretation.
+            position (QPointF): Label origin in scene coordinates.
+            color (str): Text color accepted by Qt.
+
+        Returns:
+            QGraphicsTextItem: The inserted scene text item.
+        """
         label = QGraphicsTextItem()
         label.setPlainText(text)
         label.setDefaultTextColor(QColor(color))
@@ -115,7 +146,14 @@ class MapGraphicsView(QGraphicsView):
 
     @staticmethod
     def _slot_position(index: int) -> QPointF:
-        """Pack rings at fixed spacing independent of current occupancy."""
+        """Place a slot in expanding rings around its location center.
+
+        Args:
+            index (int): Zero-based slot assigned to an item at one location.
+
+        Returns:
+            QPointF: Offset in scene units from the location center.
+        """
         radius = 76.0
         # A 64-pixel chord separates complete markers, including badges.
         count = 6
@@ -133,6 +171,17 @@ class MapGraphicsView(QGraphicsView):
 
         Existing occupants keep their slot when others leave or arrive.
         Delivered positions can be requested for final arrival animation.
+
+        Args:
+            drones (list[Drone]): Fleet whose current locations determine slot
+                groups.
+            include_delivered (bool): Include delivered drones at their current
+                zone when preparing the final arrival animation.
+
+        Returns:
+            dict[str, QPointF]: Scene coordinates keyed by drone ID. Drones
+            whose location has no
+            displayed center are omitted.
         """
         groups: dict[str, list[Drone]] = {}
         centers: dict[str, QPointF] = {}
@@ -174,7 +223,12 @@ class MapGraphicsView(QGraphicsView):
         return result
 
     def show_drones(self, drones: list[Drone]) -> None:
-        """Update persistent marker positions and remove delivered drones."""
+        """Update marker positions and remove drones no longer displayed.
+
+        Args:
+            drones (list[Drone]): Current fleet state; delivered drones are
+                omitted.
+        """
         positions = self.drone_positions(drones)
         for drone_id in list(self.drone_items):
             if drone_id not in positions:
@@ -201,7 +255,12 @@ class MapGraphicsView(QGraphicsView):
         self._update_bounds()
 
     def refresh(self, simulation: Simulation) -> None:
-        """Refresh live hub occupancy and link traffic tooltips."""
+        """Refresh live hub occupancy and link traffic tooltips.
+
+        Args:
+            simulation (Simulation): Simulation snapshot whose current state is
+                displayed.
+        """
         if self._config is None:
             return
         for zone in [self._config.start, *self._config.zones,
@@ -226,7 +285,7 @@ class MapGraphicsView(QGraphicsView):
             )
 
     def _update_bounds(self) -> None:
-        """Include current items and proportional canvas padding."""
+        """Include all current items and proportional scene padding."""
         bounds = self.scene().itemsBoundingRect()
         horizontal = max(60.0, bounds.width() * .2)
         vertical = max(60.0, bounds.height() * .2)
@@ -235,7 +294,7 @@ class MapGraphicsView(QGraphicsView):
         ))
 
     def fit_map(self) -> None:
-        """Fit all current topology, labels, and drone markers."""
+        """Fit topology, labels, and drone markers into the viewport."""
         self._fit_mode = True
         if self.scene().items() and not self._fitting:
             self._fitting = True
@@ -248,13 +307,23 @@ class MapGraphicsView(QGraphicsView):
                 self._fitting = False
 
     def resizeEvent(self, event: QResizeEvent) -> None:
-        """Refit a resized overview without disturbing manual zoom."""
+        """Refit the overview after resize while fit mode is enabled.
+
+        Args:
+            event (QResizeEvent): Qt resize event delivered for this view.
+        """
         super().resizeEvent(event)
         if self._fit_mode:
             self.fit_map()
 
     def drawBackground(self, painter: QPainter, rect: QRect | QRectF) -> None:
-        """Draw a dot grid with a bounded number of visible points."""
+        """Draw a dot grid while bounding the number of visible points.
+
+        Args:
+            painter (QPainter): Qt painter for the background region.
+            rect (QRect | QRectF): Visible scene rectangle in scene
+                coordinates.
+        """
         super().drawBackground(painter, rect)
         painter.save()
         painter.setPen(QPen(QColor("#24283b"), 1))
@@ -270,7 +339,7 @@ class MapGraphicsView(QGraphicsView):
         painter.restore()
 
     def _selection_changed(self) -> None:
-        """Publish the current selection without starting a run."""
+        """Emit the first selected item's kind and stable identifier."""
         selected = self.scene().selectedItems()
         if not selected:
             self.object_selected.emit("", "")
@@ -279,7 +348,12 @@ class MapGraphicsView(QGraphicsView):
                                       str(selected[0].data(1)))
 
     def wheelEvent(self, event: QWheelEvent) -> None:
-        """Bound user zoom relative to the most recent fitted view."""
+        """Zoom around the pointer within bounds relative to the fitted view.
+
+        Args:
+            event (QWheelEvent): Wheel event whose vertical delta determines
+                zoom direction.
+        """
         factor = 1.15 if event.angleDelta().y() > 0 else 1 / 1.15
         scale = self.transform().m11() * factor / max(self._fit_scale, 1e-300)
         if .25 <= scale <= 16:
@@ -291,7 +365,16 @@ class MapGraphicsView(QGraphicsView):
     def _zone_colors(
         zone: ZoneSpec, config: MapConfig,
     ) -> tuple[str, str, str]:
-        """Resolve configured fills and redundant type outlines."""
+        """Resolve configured fill and type-based outline colors.
+
+        Args:
+            zone (ZoneSpec): Zone whose color and role determine its fill.
+            config (MapConfig): Map endpoints used to identify start and goal.
+
+        Returns:
+            tuple[str, str, str]: Fill color, outline color, and descriptive
+            label for the zone's role or type.
+        """
         requested = QColor(zone.color) if zone.color else QColor()
         if zone is config.start:
             fill, outline, label = "#73daca", "#2ac3de", "Start"
@@ -310,7 +393,15 @@ class MapGraphicsView(QGraphicsView):
 
     @staticmethod
     def _zone_tooltip(zone: ZoneSpec) -> str:
-        """Format escaped hub properties for a hover tooltip."""
+        """Format escaped hub properties for a hover tooltip.
+
+        Args:
+            zone (ZoneSpec): Zone whose name, type, coordinates, capacity, and
+                color are displayed.
+
+        Returns:
+            str: HTML tooltip text with user-provided strings escaped.
+        """
         capacity = (str(zone.max_drones) if isinstance(zone, RegZoneSpec)
                     else "unlimited")
         return (f"<b>{escape(zone.name)}</b><br>Type: {zone.zone_type.value}"

@@ -77,7 +77,12 @@ def test_negative_constraints_apply_on_actual_entry_and_arrival() -> None:
 
 
 def test_explicit_cancellation_prevents_search(tmp_path: Path) -> None:
-    """Cancellation remains distinct from a bounded infeasible route."""
+    """Cancellation remains distinct from a bounded infeasible route.
+
+    Args:
+        tmp_path (Path): Pytest temporary directory used for logs or generated
+            input.
+    """
     _ = tmp_path
     network = Simulation.from_config(
         Parser().parse_text(MAP), PriorityBasedSolver(),

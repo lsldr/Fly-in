@@ -18,7 +18,15 @@ CHALLENGER_MAP = (
 
 
 def _shortest_duration(network: DroneNetwork) -> int:
-    """Return the shortest legal duration from the start to the end hub."""
+    """Return the shortest legal duration from the start to the end hub.
+
+    Args:
+        network (DroneNetwork): Topology used for the independent route, seed,
+            or solver operation.
+
+    Returns:
+        int: Minimum physical travel duration from start to goal.
+    """
     distances = {network.start.name: 0}
     queue: list[tuple[int, str]] = [(0, network.start.name)]
     while queue:

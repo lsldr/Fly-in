@@ -28,7 +28,15 @@ CATALOG_TURNS = {
 
 @dataclass(frozen=True)
 class AnalyticCase:
-    """Independent necessary throughput bound with a matching pipeline."""
+    """An analytic delivery bound and a matching pipeline construction.
+
+    Attributes:
+        filename (str): Fixture basename under maps/extra.
+        latencies (tuple[int, ...]): First possible arrival turn per cut.
+        capacities (tuple[int, ...]): Per-turn delivery capacity for each cut,
+            paired with latencies in order.
+        proof (str): Explanation of the necessary bound and matching schedule.
+    """
 
     filename: str
     latencies: tuple[int, ...]
@@ -36,13 +44,29 @@ class AnalyticCase:
     proof: str
 
     def deliveries_by(self, turn: int) -> int:
-        """Count maximal deliveries permitted by the specified cut windows."""
+        """Count deliveries permitted by the cut windows through a turn.
+
+        Args:
+            turn (int): Inclusive completion horizon in simulation turns.
+
+        Returns:
+            int: Sum of capacity times available arrival turns across all cuts;
+            cuts whose first arrival is later than the horizon contribute zero.
+        """
         return sum(capacity * max(0, turn - latency + 1)
                    for latency, capacity in
                    zip(self.latencies, self.capacities))
 
     def minimum(self, fleet: int = 100) -> int:
-        """Find the first horizon the necessary cut bound can accommodate."""
+        """Find the earliest turn whose cut windows can hold the fleet.
+
+        Args:
+            fleet (int): Number of drones to deliver; defaults to 100. Use a
+                positive-capacity case when fleet is positive.
+
+        Returns:
+            int: Earliest sufficient horizon, or 0 for a nonpositive fleet.
+        """
         turn = 0
         while self.deliveries_by(turn) < fleet:
             turn += 1
@@ -90,7 +114,13 @@ SMALL_NAMES = (
 
 
 class MapBuilder:
-    """Declare deterministic stress graphs without graph-library helpers."""
+    """Mutable declarations for deterministic 100-drone stress fixtures.
+
+    Attributes:
+        hubs (list[str]): Hub declarations, initially the start and goal.
+        links (list[str]): Connection declarations in insertion order.
+        pairs (set[frozenset[str]]): Endpoint pairs already used by links.
+    """
 
     def __init__(self) -> None:
         """Start one 100-drone graph with unlimited endpoints."""
@@ -99,12 +129,31 @@ class MapBuilder:
         self.pairs: set[frozenset[str]] = set()
 
     def hub(self, name: str, kind: str = "normal", cap: int = 1) -> None:
-        """Append a uniquely named hub with explicit resource metadata."""
+        """Append a hub declaration with explicit type and capacity metadata.
+
+        Choose a name not already present in the fixture; this helper does not
+        validate name uniqueness.
+
+        Args:
+            name (str): New hub identifier.
+            kind (str): Zone type text; defaults to "normal".
+            cap (int): Simultaneous-drone capacity; defaults to 1.
+        """
         self.hubs.append(f"hub: {name} {len(self.hubs)} 1 "
                          f"[zone={kind} max_drones={cap}]")
 
     def link(self, first: str, second: str, cap: int = 1) -> None:
-        """Append one undirected link, rejecting duplicate fixture edges."""
+        """Append one undirected connection and record its endpoint pair.
+
+        Args:
+            first (str): First endpoint identifier.
+            second (str): Second endpoint identifier.
+            cap (int): Shared per-turn link capacity; defaults to 1.
+
+        Raises:
+            AssertionError: Endpoints match or the pair already has a
+                connection.
+        """
         pair = frozenset((first, second))
         assert len(pair) == 2 and pair not in self.pairs
         self.pairs.add(pair)
@@ -114,7 +163,22 @@ class MapBuilder:
     def route(
         self, names: list[str], capacity: int = 1, restricted: int = 0,
     ) -> None:
-        """Build a pipeline, charging extra latency on its first hubs."""
+        """Append intermediate hubs and links for a pipeline.
+
+        Reuse the supplied endpoint names. Make the first requested
+        intermediate
+        hubs restricted, then mark every third remaining intermediate index as
+        priority. Apply the same capacity to new hubs and all route links.
+
+        Args:
+            names (list[str]): Ordered hub IDs, including existing endpoints.
+            capacity (int): Hub and link capacity; defaults to 1.
+            restricted (int): Number of initial intermediate hubs that require
+                two-turn entry; defaults to 0.
+
+        Raises:
+            AssertionError: A route link repeats an endpoint or existing pair.
+        """
         for index, name in enumerate(names[1:-1]):
             self.hub(name, "restricted" if index < restricted
                      else "priority" if index % 3 == 0 else "normal",
@@ -123,12 +187,19 @@ class MapBuilder:
             self.link(first, second, capacity)
 
     def pad(self, anchor: str) -> None:
-        """Add accessible cycles, genuine leaves, and blocked decoys.
+        """Extend the graph to 200 hubs and 300 links without a shorter route.
 
-        All padding joins exactly one existing anchor, so removing its
-        round trips leaves a delivery walk at least as short. Chords join
-        only padding hubs. Some isolated leaves are blocked, the rest
-        remain accessible dead ends. No disconnected count-only padding.
+        Attach all padding to one existing hub. Removing these detours leaves a
+        walk no longer than the original. Chords connect only padding hubs; the
+        last five added hubs are blocked.
+
+        Args:
+            anchor (str): Existing hub to which all padding branches connect.
+
+        Raises:
+            AssertionError: The remaining hub/link counts cannot fit the
+                padding
+                pattern, or a generated connection duplicates an existing pair.
         """
         amount = 200 - len(self.hubs)
         for index in range(amount):
@@ -143,13 +214,32 @@ class MapBuilder:
         assert len(self.hubs) == 200 and len(self.links) == 300
 
     def text(self, proof: str) -> str:
-        """Serialize hubs before links with the independent proof comment."""
+        """Serialize the fleet, hubs, and links with a proof comment.
+
+        Args:
+            proof (str): Explanation placed in the first comment line.
+
+        Returns:
+            str: Complete map text for 100 drones, ending with a newline.
+        """
         return "\n".join([f"# {proof}", "nb_drones: 100",
                           *self.hubs, *self.links]) + "\n"
 
 
 def large_map(case: AnalyticCase) -> str:
-    """Construct a graph with the stated independent cut/latency bound."""
+    """Build a deterministic stress map for an analytic fixture case.
+
+    Args:
+        case (AnalyticCase): One of LARGE_CASES or HARD_CASE, which selects
+            the construction and supplies capacities and the proof comment.
+
+    Returns:
+        str: Map declarations for 100 drones, 200 hubs, and 300 connections.
+
+    Raises:
+        ValueError: The case filename does not select a known construction.
+        AssertionError: Generated links or padding violate fixture invariants.
+    """
     builder = MapBuilder()
     if case == HARD_CASE:
         for name in ("a", "b", "c", "d"):
@@ -197,7 +287,17 @@ def large_map(case: AnalyticCase) -> str:
 
 
 def write_extra_maps() -> None:
-    """Regenerate only the explicitly requested review map fixtures."""
+    """Regenerate the reviewed fixtures in maps/extra.
+
+    Create the output directory if needed. Copy the first two small fixtures
+    from tests/fixtures, write the remaining small examples, and overwrite
+    all large analytic fixtures. Leave unrelated files in place.
+
+    Raises:
+        OSError: A source fixture cannot be read or an output cannot be
+            written.
+        AssertionError: A generated map violates construction invariants.
+    """
     EXTRA.mkdir(exist_ok=True)
     for output, source in zip(SMALL_NAMES[:2],
                               ("prioritized_trap.txt",

@@ -9,6 +9,7 @@ from fly_in.models import ZoneType
 
 
 def test_quadcopter_heading_keeps_item_and_badge_upright() -> None:
+    """Render a rotated drone and verify its item transform stays upright."""
     app = QApplication.instance() or QApplication([])
     assert app is not None
     scene = QGraphicsScene()
@@ -26,6 +27,7 @@ def test_quadcopter_heading_keeps_item_and_badge_upright() -> None:
 
 
 def test_hub_text_contrast_and_selection_halo() -> None:
+    """Check selected hubs show a halo and choose dark ink on light fill."""
     app = QApplication.instance() or QApplication([])
     assert app is not None
     scene = QGraphicsScene()
@@ -42,7 +44,16 @@ def test_hub_text_contrast_and_selection_halo() -> None:
 
 
 def test_palette_text_contrast_meets_aa() -> None:
+    """Check normal-size palette text meets the 4.5:1 contrast threshold."""
     def luminance(hex_color: str) -> float:
+        """Convert an sRGB hex color to relative luminance.
+
+        Args:
+            hex_color (str): Color accepted by QColor.
+
+        Returns:
+            float: Relative luminance between zero and one.
+        """
         color = QColor(hex_color)
         channels = [color.redF(), color.greenF(), color.blueF()]
         linear = [value / 12.92 if value <= .04045
@@ -59,7 +70,16 @@ def test_palette_text_contrast_meets_aa() -> None:
 
 
 def test_primary_button_contrast() -> None:
+    """Check foreground contrast in normal and active button states."""
     def luminance(hex_color: str) -> float:
+        """Convert an sRGB hex color to relative luminance.
+
+        Args:
+            hex_color (str): Color accepted by QColor.
+
+        Returns:
+            float: Relative luminance between zero and one.
+        """
         color = QColor(hex_color)
         channels = [color.redF(), color.greenF(), color.blueF()]
         linear = [value / 12.92 if value <= .04045

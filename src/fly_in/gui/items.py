@@ -12,13 +12,29 @@ from fly_in.models import ZoneType
 
 
 class HubItem(QGraphicsPathItem):
-    """Hub shape with a separate, persistent selection halo."""
+    """Hub shape with a separate, persistent selection halo.
+
+    Attributes:
+        role (str): ``start``, ``goal``, or ``hub`` marker role.
+        zone_type (ZoneType): Semantic type used for the interior marker.
+        halo (QGraphicsPathItem): Child path shown while this hub is selected.
+    """
 
     def __init__(
         self, name: str, position: QPointF, fill: str, outline: str,
         role: str, zone_type: ZoneType,
     ) -> None:
-        """Create a role-specific shape and its selection halo."""
+        """Create a role-specific shape and its selection halo.
+
+        Args:
+            name (str): Stable zone identifier stored on the graphics item.
+            position (QPointF): Hub center in scene coordinates.
+            fill (str): Interior color name or Qt color string.
+            outline (str): Outline color name or Qt color string.
+            role (str): Endpoint or ordinary hub role.
+            zone_type (ZoneType): Zone type that determines its redundant
+                marker.
+        """
         super().__init__()
         path = QPainterPath()
         if role in {"start", "goal"}:
@@ -65,7 +81,14 @@ class HubItem(QGraphicsPathItem):
         self, painter: QPainter, option: QStyleOptionGraphicsItem,
         widget: QWidget | None = None,
     ) -> None:
-        """Paint redundant role/type symbols and selection feedback."""
+        """Paint redundant role/type symbols and selection feedback.
+
+        Args:
+            painter (QPainter): Qt painter used for the current scene repaint.
+            option (QStyleOptionGraphicsItem): Style and state information
+                supplied by the scene.
+            widget (QWidget | None): Optional widget being painted.
+        """
         super().paint(painter, option, widget)
         self.halo.setVisible(self.isSelected())
         painter.setPen(QPen(self._ink, 2))
@@ -82,7 +105,13 @@ class LinkItem(QGraphicsPathItem):
     """Wide clickable link with a thin visible centerline."""
 
     def __init__(self, name: str, first: QPointF, last: QPointF) -> None:
-        """Create a selectable path with a generous hit area."""
+        """Create a selectable path with a generous hit area.
+
+        Args:
+            name (str): Canonical identifier stored with the connection item.
+            first (QPointF): Scene coordinate of the first endpoint.
+            last (QPointF): Scene coordinate of the second endpoint.
+        """
         path = QPainterPath(first)
         path.lineTo(last)
         super().__init__(path)
@@ -96,7 +125,14 @@ class LinkItem(QGraphicsPathItem):
         self, painter: QPainter, option: QStyleOptionGraphicsItem,
         widget: QWidget | None = None,
     ) -> None:
-        """Paint the visible line and optional dashed selection."""
+        """Paint the visible line and optional dashed selection.
+
+        Args:
+            painter (QPainter): Qt painter used for the current scene repaint.
+            option (QStyleOptionGraphicsItem): Style and state information
+                supplied by the scene.
+            widget (QWidget | None): Optional widget being painted.
+        """
         if self.isSelected():
             painter.setPen(QPen(
                 QColor("#7dcfff"), 7, Qt.PenStyle.DashLine
@@ -107,10 +143,19 @@ class LinkItem(QGraphicsPathItem):
 
 
 class QuadcopterItem(QGraphicsItem):
-    """Vector quadcopter whose heading never rotates its ID badge."""
+    """Vector quadcopter whose heading never rotates its ID badge.
+
+    Attributes:
+        drone_id (str): Identifier drawn below the quadcopter body.
+        heading (float): Body rotation in degrees, clockwise from east.
+    """
 
     def __init__(self, drone_id: str) -> None:
-        """Create a persistent drone marker with an upright badge."""
+        """Create a persistent drone marker with an upright badge.
+
+        Args:
+            drone_id (str): Identifier to draw in the marker's badge.
+        """
         super().__init__()
         self.drone_id = drone_id
         self.heading = 0.0
@@ -118,11 +163,19 @@ class QuadcopterItem(QGraphicsItem):
         self.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
 
     def boundingRect(self) -> QRectF:
-        """Include the arms, rotor rings, and identifier badge."""
+        """Return the local bounds covering arms, rotors, and ID badge.
+
+        Returns:
+            QRectF: Marker bounds in local item coordinates.
+        """
         return QRectF(-19, -19, 38, 46)
 
     def set_heading(self, degrees: float) -> None:
-        """Rotate only the body; the ID remains upright."""
+        """Rotate only the body; the ID remains upright.
+
+        Args:
+            degrees (float): Clockwise body heading from the positive x-axis.
+        """
         self.heading = degrees
         self.update()
 
@@ -130,7 +183,14 @@ class QuadcopterItem(QGraphicsItem):
         self, painter: QPainter, option: QStyleOptionGraphicsItem,
         widget: QWidget | None = None,
     ) -> None:
-        """Draw four rotors and an upright, high-contrast ID badge."""
+        """Draw four rotors and an upright, high-contrast ID badge.
+
+        Args:
+            painter (QPainter): Qt painter used for the current scene repaint.
+            option (QStyleOptionGraphicsItem): Style and state information
+                supplied by the scene.
+            widget (QWidget | None): Optional widget being painted.
+        """
         painter.save()
         painter.rotate(self.heading)
         painter.setPen(QPen(QColor("#7dcfff"), 2))

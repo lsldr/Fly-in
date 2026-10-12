@@ -8,7 +8,7 @@ import pytest
 from PySide6.QtWidgets import QApplication
 
 from fly_in.benchmark import BenchmarkRunner
-from fly_in.cli import main
+from fly_in.__main__ import main
 from fly_in.gui.main_window import MainWindow
 from fly_in.gui.planning import PlanningWorker
 from fly_in.parser import Parser
@@ -41,7 +41,12 @@ def test_factory_default_has_unlimited_proof_limits() -> None:
 def test_execution_failure_preserves_successful_planning_proof(
     tmp_path: Path, status: str,
 ) -> None:
-    """Execution stopping before delivery preserves the planning proof."""
+    """Preserve a completed proof when execution later stops.
+
+    Args:
+        tmp_path (Path): Isolated directory for run records.
+        status (str): Execution outcome, either failed or cancelled.
+    """
     solver = SolverFactory().create()
     assert isinstance(solver, ScheduledSolver)
     simulation = Simulation.from_config(
@@ -71,7 +76,11 @@ def test_execution_failure_preserves_successful_planning_proof(
 def test_completed_heuristic_run_does_not_invent_a_proof(
     tmp_path: Path,
 ) -> None:
-    """Execution completion does not certify a heuristic schedule."""
+    """Keep heuristic completion separate from an optimality proof.
+
+    Args:
+        tmp_path (Path): Isolated directory for output and run records.
+    """
     simulation = Simulation.from_config(
         Parser().parse_text(DIRECT.decode()),
         SolverFactory().create('priority'),
@@ -111,7 +120,12 @@ def test_unproved_incumbent_is_diagnostic_only() -> None:
 def test_cli_unproved_timeout_has_failure_record_and_no_moves(
     tmp_path: Path, capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Explicit proof exhaustion exits before playback or movement output."""
+    """Record proof timeout before playback and leave movement output absent.
+
+    Args:
+        tmp_path (Path): Isolated root for output and record directories.
+        capsys (pytest.CaptureFixture[str]): Captured CLI stdout and stderr.
+    """
     records = tmp_path / 'records'
     output = tmp_path / 'out'
     with pytest.raises(SystemExit) as failure:
@@ -133,7 +147,11 @@ def test_cli_unproved_timeout_has_failure_record_and_no_moves(
 
 
 def test_benchmark_unproved_floor_is_not_completed(tmp_path: Path) -> None:
-    """Benchmark diagnostics keep interruption distinct from completion."""
+    """Keep an interrupted benchmark distinct from completed execution.
+
+    Args:
+        tmp_path (Path): Isolated map catalog and report root.
+    """
     maps = tmp_path / 'maps'
     maps.mkdir()
     (maps / TRAP.name).write_bytes(TRAP.read_bytes())
@@ -153,7 +171,12 @@ def test_benchmark_unproved_floor_is_not_completed(tmp_path: Path) -> None:
 def test_gui_unproved_record_and_disabled_playback(
     tmp_path: Path, app: QApplication,
 ) -> None:
-    """The existing failure signal preserves diagnostics and recovery."""
+    """Preserve diagnostics and disable playback after planning failure.
+
+    Args:
+        tmp_path (Path): Isolated directory for records and output.
+        app (QApplication): Shared Qt application fixture.
+    """
     with patch.object(PlanningWorker, 'start', return_value=None):
         window = MainWindow(
             TRAP.parent, initial_map=TRAP, solver_name='optimal',
@@ -189,7 +212,12 @@ def test_gui_unproved_record_and_disabled_playback(
 def test_gui_adoption_rejects_unproved_proof_mode_result(
     tmp_path: Path, app: QApplication,
 ) -> None:
-    """A malformed prepared callback cannot authorize proof-mode playback."""
+    """Reject an unproved prepared result in proof-mode playback.
+
+    Args:
+        tmp_path (Path): Isolated directory for records and output.
+        app (QApplication): Shared Qt application fixture.
+    """
     with patch.object(PlanningWorker, 'start', return_value=None):
         window = MainWindow(
             TRAP.parent, initial_map=TRAP, solver_name='optimal',
@@ -215,7 +243,12 @@ def test_gui_adoption_rejects_unproved_proof_mode_result(
 def test_execution_error_keeps_cli_planning_certificate(
     tmp_path: Path, capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """A terminal playback failure cannot erase an earlier planning proof."""
+    """Keep the planning certificate when terminal playback fails.
+
+    Args:
+        tmp_path (Path): Isolated root for source and records.
+        capsys (pytest.CaptureFixture[str]): Captured CLI output streams.
+    """
     source = tmp_path / 'direct.txt'
     source.write_bytes(DIRECT)
     records = tmp_path / 'records'
@@ -238,7 +271,11 @@ def test_execution_error_keeps_cli_planning_certificate(
 def test_execution_error_keeps_benchmark_planning_certificate(
     tmp_path: Path,
 ) -> None:
-    """Benchmark execution failure preserves its independently proved plan."""
+    """Keep the planning certificate when benchmark execution fails.
+
+    Args:
+        tmp_path (Path): Isolated map catalog and report root.
+    """
     maps = tmp_path / 'maps'
     maps.mkdir()
     (maps / 'direct.txt').write_bytes(DIRECT)

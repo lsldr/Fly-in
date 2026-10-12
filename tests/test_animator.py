@@ -8,6 +8,7 @@ from fly_in.gui.animator import TurnAnimationController
 
 
 def test_interpolation_pause_cancel_and_synchronous_completion() -> None:
+    """Check interpolation, pause state, cancellation, and synchronous snap."""
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     app = QApplication.instance() or QApplication([])
     item = QGraphicsEllipseItem()
@@ -33,6 +34,7 @@ def test_interpolation_pause_cancel_and_synchronous_completion() -> None:
 
 
 def test_completion_sets_exact_target() -> None:
+    """Check that natural completion lands on the exact target point."""
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     app = QApplication.instance() or QApplication([])
     item = QGraphicsEllipseItem()

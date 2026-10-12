@@ -1,3 +1,5 @@
+"""Advance drone plans under simultaneous movement and capacity rules."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -12,7 +14,13 @@ from fly_in.solvers.protocol import Solver
 
 @dataclass(frozen=True)
 class SimulationResult:
-    """Completed run data, including the formatted turn history."""
+    """Completed run data, including formatted turn history.
+
+    Attributes:
+        turns (int): Absolute simulation turn at completion.
+        history (list[list[str]]): Copied movement events grouped by turn.
+        metrics (RunMetrics): Aggregate movement and delivery measurements.
+    """
 
     turns: int
     history: list[list[str]]
@@ -21,7 +29,16 @@ class SimulationResult:
 
 @dataclass
 class Simulation:
-    """Advance validated drone actions with simultaneous capacity rules."""
+    """Mutable run state that applies actions under simultaneous capacities.
+
+    Attributes:
+        network (DroneNetwork): Mutable map topology for this run.
+        drones (list[Drone]): Drone fleet and current state.
+        solver (Solver): Strategy supplying actions for each turn.
+        metrics (MetricsCollector): Measurements accumulated during turns.
+        turn (int): Number of turns already completed.
+        history (list[list[str]]): Movement events grouped by completed turn.
+    """
 
     network: DroneNetwork
     drones: list[Drone]
@@ -32,7 +49,15 @@ class Simulation:
 
     @classmethod
     def from_config(cls, config: MapConfig, solver: Solver) -> "Simulation":
-        """Create a simulation with its network and initial drone fleet."""
+        """Create a simulation with a fresh network and drone fleet.
+
+        Args:
+            config (MapConfig): Validated map and fleet size.
+            solver (Solver): Strategy used to plan movement.
+
+        Returns:
+            Simulation: Run initialized at the map's start endpoint.
+        """
         network = DroneNetwork.from_config(config)
         drones = [
             Drone(f"D{index}", network.start)
@@ -45,7 +70,27 @@ class Simulation:
         on_turn: Callable[[Simulation, list[str]], None] | None = None,
         *, max_turns: int | None = None,
     ) -> SimulationResult:
-        """Run until delivered, optionally limiting the absolute turn count."""
+        """Run until delivery, optionally limiting the absolute turn count.
+
+        Args:
+            on_turn (Callable[[Simulation, list[str]], None] | None): Optional
+                callback invoked after each committed turn with copied events.
+            max_turns (int | None): Optional positive absolute turn ceiling.
+                Exceptions raised by solver planning propagate to the caller.
+
+        Returns:
+            SimulationResult: Completed turn count, copied history, and
+                metric snapshot.
+
+        Raises:
+            ValueError: If ``max_turns`` is less than one.
+            RuntimeError: If the limit is reached before delivery or no
+                actions can progress the undelivered fleet.
+            PlanningCancelled: If a solver's cancellation check stops
+                planning.
+            SearchTimeout: If a solver exhausts its search deadline, including
+                when an optimal result cannot be proved.
+        """
         if max_turns is not None and max_turns < 1:
             raise ValueError("max_turns must be positive")
         while not all(drone.delivered for drone in self.drones):
@@ -69,7 +114,23 @@ class Simulation:
                                 self.metrics.summary())
 
     def step(self) -> list[str]:
-        """Advance the simulation by one turn and return movement events."""
+        """Validate and commit one turn, then return its movement events.
+
+        The full proposed action row and capacity constraints are checked
+        before simulation state changes. A committed turn updates forced
+        restricted-link arrivals, drone state, movement history, and metrics.
+        Planning exceptions propagate without wrapping. If every drone is
+        already delivered, return an empty list without advancing the turn.
+
+        Returns:
+            list[str]: Events for departures and arrivals committed this turn.
+
+        Raises:
+            ValueError: If the solver returns malformed, unavailable, or
+                capacity-violating movements.
+            PlanningCancelled: If solver planning is cancelled.
+            SearchTimeout: If solver planning exhausts its time budget.
+        """
         if all(drone.delivered for drone in self.drones):
             return []
         arriving_transit = [
@@ -165,7 +226,16 @@ class Simulation:
     def _validate_capacity(
         self, departures: list[tuple[Drone, Zone, bool]]
     ) -> None:
-        """Reject plans that exceed link or destination zone capacity."""
+        """Reject departures that exceed link or destination capacity.
+
+        Args:
+            departures (list[tuple[Drone, Zone, bool]]): Proposed drone,
+                destination, and restricted-traversal flag tuples.
+
+        Raises:
+            ValueError: If a connection traffic limit or zone occupancy limit
+                would be exceeded.
+        """
         leaving: dict[str, int] = {}
         arriving: dict[str, int] = {}
         link_counts: dict[str, int] = {}

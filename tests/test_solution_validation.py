@@ -36,7 +36,11 @@ connection: blocked-g
     'wait-gap', 'negative-time',
 ])
 def test_validator_rejects_inconsistent_physical_paths(defect: str) -> None:
-    """Reject timed claims that capacity checks alone cannot establish."""
+    """Reject timed claims that capacity checks alone cannot establish.
+
+    Args:
+        defect (str): Malformed path case selected for validator rejection.
+    """
     network = DroneNetwork.from_config(Parser().parse_text(MAP))
     path = PrioritizedPlanner().solve(network, ['D1']).paths['D1']
     states = list(path.states)
@@ -89,7 +93,13 @@ def test_failed_repreparation_discards_previous_schedule() -> None:
 def test_heuristics_do_not_trust_a_supplied_optimal_flag(
     strategy: str, tmp_path: Path,
 ) -> None:
-    """Legal suboptimal paths cannot establish a caller's proof claim."""
+    """Legal suboptimal paths cannot establish a caller's proof claim.
+
+    Args:
+        strategy (str): Solver strategy selected for this shared regression.
+        tmp_path (Path): Pytest temporary directory used for logs or generated
+            input.
+    """
     trap = Path(__file__).parent / 'fixtures/prioritized_trap.txt'
     network = DroneNetwork.from_config(Parser().parse(trap))
     initial = PrioritizedPlanner().solve(network, ['D1', 'D2'])

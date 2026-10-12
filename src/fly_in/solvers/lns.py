@@ -17,12 +17,28 @@ from fly_in.solvers.prioritized import PrioritizedPlanner, SeedPlanner
 
 
 class LNSImprover(ScheduledSolver):
-    """Keep a feasible incumbent while repairing small agent neighborhoods."""
+    """Feasible-schedule improver using small destroy-and-repair neighborhoods.
+
+    Attributes:
+        time_budget (float): Soft improvement budget in seconds.
+        max_iter (int): Maximum destroy-and-repair attempts.
+        seed (int): Seed used for reproducible neighborhood selection.
+    """
 
     def __init__(
         self, time_budget: float = 0.5, max_iter: int = 200, seed: int = 0,
     ) -> None:
-        """Configure a soft floor-inclusive deadline and reproducible RNG."""
+        """Configure a soft floor-inclusive deadline and reproducible RNG.
+
+        Args:
+            time_budget (float): Nonnegative improvement duration in seconds.
+            max_iter (int): Nonnegative number of repair attempts.
+            seed (int): Random seed for neighborhood sampling.
+
+        Raises:
+            ValueError: If duration is non-finite/negative or iteration count
+                is negative.
+        """
         super().__init__()
         if not isfinite(time_budget) or time_budget < 0:
             raise ValueError('time budget must be finite and nonnegative')
@@ -36,11 +52,29 @@ class LNSImprover(ScheduledSolver):
         self, network: DroneNetwork, drone_ids: list[str],
         initial: Solution | None = None, budget: SearchBudget | None = None,
     ) -> Solution:
-        """Return a lexicographically nonworsening, always-feasible result.
+        """Improve a feasible schedule by turns, then movement cost.
 
-        A missing floor is computed even when the deadline expires; explicit
-        cancellation still propagates. Afterward, timeout abandons a partial
-        repair and returns the last accepted complete schedule.
+        The local improvement deadline does not interrupt floor construction.
+        When no incumbent is supplied, floor construction uses the parent
+        budget, so its deadline can raise SearchTimeout. After a floor exists,
+        timeout abandons partial repair and returns the last accepted schedule.
+
+        Args:
+            network (DroneNetwork): Topology to plan.
+            drone_ids (list[str]): Fleet identifiers to schedule.
+            initial (Solution | None): Optional feasible incumbent.
+            budget (SearchBudget | None): Parent limits intersected with this
+                improver's deadline.
+
+        Returns:
+            Solution: Feasible incumbent, with status indicating cutoff.
+
+        Raises:
+            ValueError: If the topology is unreachable or the incumbent is
+                invalid for the requested fleet.
+            PlanningCancelled: If explicit cancellation is requested.
+            SearchTimeout: If a parent deadline expires while constructing a
+                missing floor.
         """
         limits = (budget or SearchBudget()).child(self.time_budget)
         floor = SeedPlanner(PrioritizedPlanner()).obtain(
@@ -85,7 +119,21 @@ class LNSImprover(ScheduledSolver):
         self, network: DroneNetwork, incumbent: Solution, rng: Random,
         budget: SearchBudget,
     ) -> list[str]:
-        """Choose latest-arrival/shared-resource or uniform random agents."""
+        """Choose latest-arrival/shared-resource or uniform random agents.
+
+        Args:
+            network (DroneNetwork): Topology used to compare path resources.
+            incumbent (Solution): Current feasible schedule.
+            rng (Random): Generator used for sampling and policy choice.
+            budget (SearchBudget): Interruption controls checked per agent.
+
+        Returns:
+            list[str]: Distinct drone identifiers selected for repair.
+
+        Raises:
+            PlanningCancelled: If the budget requests cancellation.
+            SearchTimeout: If the budget deadline elapses.
+        """
         agents = sorted(incumbent.paths, key=AgentOrder.key)
         size = rng.randint(min(2, len(agents)), min(5, len(agents)))
         if rng.random() >= 0.7:
@@ -111,7 +159,15 @@ class LNSImprover(ScheduledSolver):
     def _footprint(
         network: DroneNetwork, path: TimedPath,
     ) -> set[tuple[str, str]]:
-        """Identify shared interior hubs/links without endpoint noise."""
+        """Identify shared interior hubs and links without endpoint noise.
+
+        Args:
+            network (DroneNetwork): Topology used to omit unlimited endpoints.
+            path (TimedPath): Path whose claimed resources are summarized.
+
+        Returns:
+            set[tuple[str, str]]: Resource-kind and identifier pairs.
+        """
         return {(kind, name) for kind, name, _ in path.resources(network)}
 
     @staticmethod
@@ -119,7 +175,24 @@ class LNSImprover(ScheduledSolver):
         incumbent: Solution, agents: list[str], table: ReservationTable,
         engine: SpaceTimeAStar, budget: SearchBudget,
     ) -> dict[str, TimedPath] | None:
-        """Commit improved reservations, otherwise roll back every change."""
+        """Commit improved reservations, otherwise roll back every change.
+
+        Args:
+            incumbent (Solution): Schedule whose selected paths are replaced.
+            agents (list[str]): Drone identifiers to remove and replan.
+            table (ReservationTable): Mutable reservations for all paths.
+            engine (SpaceTimeAStar): Search engine for replacement paths.
+            budget (SearchBudget): Interruption controls for repair.
+
+        Returns:
+            dict[str, TimedPath] | None: Complete strict improvement, or None
+                when repair is infeasible or does not improve the objective.
+
+        Raises:
+            PlanningCancelled: If the budget requests cancellation.
+            SearchTimeout: If the deadline elapses; reservations are restored
+                before propagation.
+        """
         original = [incumbent.paths[agent] for agent in agents]
         for path in original:
             table.unreserve(path)

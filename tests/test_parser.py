@@ -1,3 +1,5 @@
+"""Parser behavior for valid maps, metadata, and line-specific failures."""
+
 from pathlib import Path
 
 import pytest
@@ -25,6 +27,7 @@ connection: tunnelB-goal
 
 
 def test_parses_example_into_simulation_config() -> None:
+    """Parse the representative map into typed configuration models."""
     config = Parser().parse_text(EXAMPLE_CONFIG)
 
     assert isinstance(config, MapConfig)
@@ -42,6 +45,7 @@ def test_parses_example_into_simulation_config() -> None:
 
 
 def test_applies_defaults_and_ignores_endpoint_capacity() -> None:
+    """Apply zone and link defaults while ignoring endpoint limits."""
     config = Parser().parse_text("""\
 nb_drones: 1
 start_hub: start 0 0 [max_drones=not-a-number]
@@ -70,6 +74,12 @@ connection: middle-end
 def test_reports_line_and_cause_for_invalid_zone(
     line: str, message: str
 ) -> None:
+    """Report both the source line and validation cause.
+
+    Args:
+        line (str): Invalid zone record inserted into the map.
+        message (str): Expected part of the diagnostic cause.
+    """
     text = f"nb_drones: 1\nstart_hub: start 0 0\nend_hub: end 1 1\n{line}\n"
 
     with pytest.raises(ConfigParseError, match=r"line 4") as error:
@@ -78,6 +88,7 @@ def test_reports_line_and_cause_for_invalid_zone(
 
 
 def test_connection_must_reference_previously_defined_zones() -> None:
+    """Reject links whose endpoint is declared later in the map."""
     text = """\
 nb_drones: 1
 start_hub: start 0 0
@@ -90,6 +101,7 @@ end_hub: end 1 1
 
 
 def test_reverse_connection_is_duplicate() -> None:
+    """Treat reversed endpoint order as the same undirected connection."""
     text = """\
 nb_drones: 1
 start_hub: start 0 0
@@ -105,6 +117,7 @@ connection: end-start
 
 
 def test_metadata_must_be_well_formed() -> None:
+    """Require every metadata item to use the key-value form."""
     text = """\
 nb_drones: 1
 start_hub: start 0 0
@@ -117,7 +130,11 @@ hub: middle 0 1 [color red]
 
 
 def test_invalid_utf8_becomes_configuration_error(tmp_path: "Path") -> None:
-    """Binary map files produce a readable parser error."""
+    """Convert an invalid UTF-8 map into a readable parser error.
+
+    Args:
+        tmp_path (Path): Isolated directory for the malformed map file.
+    """
     path = tmp_path / "bad.txt"
     path.write_bytes(b"\xff")
     with pytest.raises(ConfigParseError, match="cannot read"):
@@ -126,7 +143,11 @@ def test_invalid_utf8_becomes_configuration_error(tmp_path: "Path") -> None:
 
 @pytest.mark.parametrize("capacity", ["1.0", "-1", "abc"])
 def test_zone_capacity_requires_integer_text(capacity: str) -> None:
-    """Pydantic coercion must not accept decimal capacity spellings."""
+    """Reject capacity spellings that are not unsigned integer text.
+
+    Args:
+        capacity (str): Invalid capacity spelling supplied as metadata.
+    """
     text = (
         "nb_drones: 1\nstart_hub: s 0 0\nend_hub: g 2 0\n"
         f"hub: a 1 0 [max_drones={capacity}]\n"
@@ -175,7 +196,12 @@ def test_large_capacity_conversion_keeps_line_context() -> None:
 def test_rejects_malformed_zone_metadata_blocks(
     prefix: str, metadata: str,
 ) -> None:
-    """Bracket errors must report the physical line, including comments."""
+    """Report malformed zone metadata at its physical source line.
+
+    Args:
+        prefix (str): Zone record keyword under test.
+        metadata (str): Malformed bracket block appended to the record.
+    """
     lines = ["# comment", "nb_drones: 1", "", "# another comment"]
     lines.append(f"{prefix}: bad 1 0 {metadata}")
     if prefix != "start_hub":
@@ -193,7 +219,11 @@ def test_rejects_malformed_zone_metadata_blocks(
     "[max_link_capacity=1] trailing",
 ])
 def test_rejects_malformed_connection_metadata_blocks(metadata: str) -> None:
-    """Connections enforce the same block grammar and line context."""
+    """Enforce connection metadata grammar and preserve line context.
+
+    Args:
+        metadata (str): Malformed block appended to a connection record.
+    """
     text = (
         "nb_drones: 1\nstart_hub: s 0 0\nend_hub: g 1 0\n"
         f"connection: s-g {metadata}\n"
@@ -210,7 +240,11 @@ def test_rejects_malformed_connection_metadata_blocks(metadata: str) -> None:
 def test_valid_metadata_order_and_comment_remain_supported(
     metadata: str,
 ) -> None:
-    """Stricter brackets preserve free-form colors, ordering, and names."""
+    """Preserve valid tag orders, free-form colors, comments, and names.
+
+    Args:
+        metadata (str): Valid permutation of zone metadata fields.
+    """
     config = Parser().parse_text(
         "nb_drones: 2\nstart_hub: s 0 0\nend_hub: g 2 0\n"
         f"hub: a[b] -1 +2 [{metadata}] # trailing comment\n"
@@ -252,7 +286,13 @@ def test_valid_metadata_order_and_comment_remain_supported(
 def test_parser_requirement_errors_keep_line_and_cause(
     text: str, line: int, cause: str,
 ) -> None:
-    """Cover first records, endpoint uniqueness, names, and field scopes."""
+    """Keep source location and cause for parser requirement failures.
+
+    Args:
+        text (str): Invalid map text for one parser requirement.
+        line (int): Expected physical line number in the diagnostic.
+        cause (str): Expected diagnostic phrase.
+    """
     with pytest.raises(ConfigParseError) as error:
         Parser().parse_text(text)
     assert f"line {line}" in str(error.value)

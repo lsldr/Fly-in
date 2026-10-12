@@ -36,7 +36,14 @@ TARGETS = {
 
 
 class BenchmarkRunner:
-    """Execute a configured map catalog with isolated solvers and reports."""
+    """Runner for a map catalog with isolated solvers and reports.
+
+    Attributes:
+        map_root (Path): Resolved root recursively searched for map files.
+        solver_name (str): Registered strategy used for each map.
+        records_root (Path): Destination directory for the benchmark report.
+        solver_options (dict[str, float | int]): Copied strategy parameters.
+    """
 
     def __init__(
         self, map_root: str | Path = "maps",
@@ -44,14 +51,32 @@ class BenchmarkRunner:
         records_root: str | Path = "records",
         solver_options: Mapping[str, float | int] | None = None,
     ) -> None:
-        """Bind catalog, strategy, destination, and defensive option copy."""
+        """Bind the catalog, strategy, report destination, and options.
+
+        Args:
+            map_root (str | Path): Directory recursively searched for maps.
+            solver_name (str): Registered strategy used for each map.
+            records_root (str | Path): Directory receiving the JSON report.
+            solver_options (Mapping[str, float | int] | None): Optional
+                solver settings copied before use.
+        """
         self.map_root = Path(map_root).resolve()
         self.solver_name = solver_name
         self.records_root = Path(records_root)
         self.solver_options = dict(solver_options or {})
 
     def run(self) -> tuple[dict[str, object], Path]:
-        """Run each map once, retaining individual failures in the report."""
+        """Run each map once and retain individual failures in the report.
+
+        Returns:
+            tuple[dict[str, object], Path]: Report data and its saved path.
+
+        Raises:
+            ValueError: If the strategy is unknown or the catalog contains no
+                text maps.
+            OSError: If the benchmark report cannot be written. Map read
+                failures are recorded in individual result rows.
+        """
         if self.solver_name not in SOLVER_CHOICES:
             raise ValueError(f"unknown solver '{self.solver_name}'")
         options = dict(self.solver_options)
@@ -147,10 +172,17 @@ class BenchmarkRunner:
 
 
 class BenchmarkApplication:
-    """Own benchmark command parsing and terminal result presentation."""
+    """Benchmark command parser and terminal result presenter."""
 
     def run(self, argv: list[str]) -> int:
-        """Execute benchmark arguments and present the saved report."""
+        """Execute benchmark arguments and present the saved report.
+
+        Args:
+            argv (list[str]): Benchmark arguments excluding the command name.
+
+        Returns:
+            int: Process status, zero when all benchmark targets pass.
+        """
         parser = argparse.ArgumentParser(prog="fly-in benchmark")
         parser.add_argument("--map-root", type=Path, default=Path("maps"))
         parser.add_argument(

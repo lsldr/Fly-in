@@ -7,6 +7,17 @@ from fly_in.solvers.pbs import PBSSolver, PriorityDAG
 
 
 def _network(drones: int, capacity: int) -> Simulation:
+    """Build a simulation with one capacity-limited intermediate hub.
+
+    Args:
+        drones (int): Fleet size used to build and solve the generated
+            topology.
+        capacity (int): Capacity shared by generated intermediate hubs and
+            connections.
+
+    Returns:
+        Simulation: Initialized simulation using a bounded PBS solver.
+    """
     text = f'''nb_drones: {drones}
 start_hub: s 0 0
 end_hub: g 2 0

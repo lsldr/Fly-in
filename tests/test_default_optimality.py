@@ -8,7 +8,8 @@ from PySide6.QtWidgets import QApplication
 
 from joint_oracle import exact_makespan
 from fly_in.benchmark import TARGETS
-from fly_in.cli import CliApplication, main
+from fly_in.__main__ import main
+from fly_in.cli import CliApplication
 from fly_in.solver_factory import SolverFactory
 from fly_in.gui.main_window import MainWindow
 from fly_in.gui.planning import PlanningWorker
@@ -87,7 +88,11 @@ connection: b-g
 
 
 def _default_solver_name() -> str:
-    """Resolve the CLI default so tests follow future solver selection."""
+    """Resolve the configured CLI solver default.
+
+    Returns:
+        str: Solver key parsed from empty CLI arguments.
+    """
     return str(CliApplication().argument_parser().parse_args([]).solver)
 
 
@@ -95,7 +100,13 @@ def _default_solver_name() -> str:
 def test_default_matches_independent_joint_optimum(
     text: str, expected: int, tmp_path: Path,
 ) -> None:
-    """Check delivery through Simulation against exhaustive legal states."""
+    """Compare default-solver delivery with an independent state search.
+
+    Args:
+        text (str): Map text for one topology and capacity case.
+        expected (int): Independently established optimal makespan.
+        tmp_path (Path): Temporary records directory for solver construction.
+    """
     config = Parser().parse_text(text)
     optimum = exact_makespan(DroneNetwork.from_config(config),
                              config.nb_drones)
@@ -108,7 +119,11 @@ def test_default_matches_independent_joint_optimum(
 
 
 def test_default_provides_a_makespan_certificate(tmp_path: Path) -> None:
-    """A default optimal-mode result must explicitly carry its proof."""
+    """Require the default solver to attach an explicit proof.
+
+    Args:
+        tmp_path (Path): Temporary records directory for solver construction.
+    """
     solver = SolverFactory(records_dir=tmp_path).create(_default_solver_name())
     assert isinstance(solver, ScheduledSolver)
     simulation = Simulation.from_config(Parser().parse(TRAP), solver)
@@ -143,7 +158,12 @@ def test_icbs_certifies_trap_and_budgeted_cutoffs_stay_honest() -> None:
 def test_cli_without_solver_flag_delivers_trap_in_three_turns(
     tmp_path: Path, capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Exercise actual argument defaults, output, and persistence together."""
+    """Exercise CLI defaults, terminal output, and persistence together.
+
+    Args:
+        tmp_path (Path): Isolated output and records root.
+        capsys (pytest.CaptureFixture[str]): Captured terminal streams.
+    """
     main([str(TRAP), "--display", "moves", "--map-root", str(TRAP.parent),
           "--output-dir", str(tmp_path / "out"),
           "--records-dir", str(tmp_path / "records")])
@@ -156,7 +176,12 @@ def test_cli_without_solver_flag_delivers_trap_in_three_turns(
 def test_gui_without_solver_override_delivers_trap_in_three_turns(
     tmp_path: Path, app: QApplication,
 ) -> None:
-    """Exercise the desktop constructor's independent default selection."""
+    """Exercise desktop default selection and three-turn delivery.
+
+    Args:
+        tmp_path (Path): Isolated output and records root.
+        app (QApplication): Shared Qt application fixture.
+    """
     with patch.object(PlanningWorker, "start", return_value=None):
         window = MainWindow(
             TRAP.parent, initial_map=TRAP, animate=False,
@@ -181,7 +206,12 @@ def test_gui_without_solver_override_delivers_trap_in_three_turns(
 def test_default_supplied_maps_match_certified_flow_bounds(
     path: Path, tmp_path: Path,
 ) -> None:
-    """For this catalog, legal schedules equal known rigorous lower bounds."""
+    """Match each supplied map's certified flow lower bound.
+
+    Args:
+        path (Path): Catalog map under test.
+        tmp_path (Path): Temporary records directory for solver construction.
+    """
     config = Parser().parse(path)
     # Size is a test envelope, not a claim that size bounds search difficulty.
     assert config.nb_drones <= 25

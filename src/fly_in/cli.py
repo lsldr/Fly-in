@@ -13,20 +13,43 @@ from fly_in.provenance import PlanningProvenance
 from fly_in.simulation import Simulation
 from fly_in.solvers import PreparableSolver
 from fly_in.solver_factory import (
-    DEFAULT_SOLVER, SOLVER_CHOICES, SolverFactory,
+    DEFAULT_SOLVER,
+    SOLVER_CHOICES,
+    SolverFactory,
 )
 from fly_in.visualization.terminal import TerminalVisualizer
 
 
 class CliApplication:
-    """Own command interpretation and the lifecycle of a selected run."""
+    """Command-line interface and lifecycle manager for selected runs.
+
+    Attributes:
+        parser (Parser): Map parser used for validation and execution.
+    """
 
     def __init__(self, parser: Parser | None = None) -> None:
-        """Bind the map parser used for validation and terminal execution."""
+        """Bind the map parser used for validation and terminal execution.
+
+        Args:
+            parser (Parser | None): Parser to use, or ``None`` to create the
+                default parser.
+        """
         self.parser = parser or Parser()
 
     def select_map(self, map_root: Path | None = None) -> Path:
-        """Prompt for one map from a sorted recursive directory listing."""
+        """Prompt for a map from a sorted recursive directory listing.
+
+        Args:
+            map_root (Path | None): Search root, defaulting to ``./maps`` in
+                the current working directory.
+
+        Returns:
+            Path: Selected map path.
+
+        Raises:
+            FileNotFoundError: If the search root contains no text maps.
+            RuntimeError: If input ends before the user selects a map.
+        """
         map_root = map_root or Path.cwd() / "maps"
         maps = sorted(
             (
@@ -43,7 +66,8 @@ class CliApplication:
         print("Available maps:", file=sys.stderr)
         for index, map_file in enumerate(maps, start=1):
             print(
-                f"{index}. {map_file.relative_to(map_root)}", file=sys.stderr,
+                f"{index}. {map_file.relative_to(map_root)}",
+                file=sys.stderr,
             )
         while True:
             choice = self._read_choice("Select a map: ")
@@ -56,7 +80,17 @@ class CliApplication:
             print("Invalid selection. Please try again.", file=sys.stderr)
 
     def _read_choice(self, prompt: str) -> str:
-        """Read a prompt without contaminating movement-only stdout."""
+        """Read a prompt from stdin while writing the prompt to stderr.
+
+        Args:
+            prompt (str): Prompt text displayed before reading input.
+
+        Returns:
+            str: User-entered choice.
+
+        Raises:
+            RuntimeError: If stdin reaches EOF before a choice is entered.
+        """
         print(prompt, end="", file=sys.stderr, flush=True)
         try:
             return input()
@@ -64,7 +98,14 @@ class CliApplication:
             raise RuntimeError("selection ended before a choice") from error
 
     def select_mode(self) -> bool:
-        """Return whether the user selected the desktop GUI."""
+        """Prompt until the user selects terminal or desktop mode.
+
+        Returns:
+            bool: ``True`` for GUI mode and ``False`` for terminal mode.
+
+        Raises:
+            RuntimeError: If input ends before a mode is selected.
+        """
         print("1. Terminal\n2. GUI", file=sys.stderr)
         while True:
             choice = self._read_choice("Select a mode: ")
@@ -81,23 +122,43 @@ class CliApplication:
         records_dir: Path,
         solver_parameters: dict[str, float | int] | None = None,
     ) -> None:
-        """Import Qt only when the desktop mode is requested."""
+        """Launch desktop playback, importing Qt only when requested.
+
+        Args:
+            path (Path): Initial map to load.
+            map_root (Path): Root directory used by map selection.
+            solver_name (str): Strategy selected for planning.
+            output_dir (Path): Destination for successful movement output.
+            records_dir (Path): Destination for run records.
+            solver_parameters (dict[str, float | int] | None): Optional
+                planning limits and strategy settings.
+        """
         from fly_in.gui.main_window import DesktopApplication
 
         DesktopApplication(
-            initial_map=path, map_root=map_root, solver_name=solver_name,
-            output_dir=output_dir, records_dir=records_dir,
-            solver_parameters=solver_parameters, argv=[sys.argv[0]],
+            initial_map=path,
+            map_root=map_root,
+            solver_name=solver_name,
+            output_dir=output_dir,
+            records_dir=records_dir,
+            solver_parameters=solver_parameters,
+            argv=[sys.argv[0]],
         ).run()
 
     def argument_parser(self) -> argparse.ArgumentParser:
-        """Define CLI flags while preserving direct map invocation."""
+        """Define CLI flags while preserving direct map invocation.
+
+        Returns:
+            argparse.ArgumentParser: Parser configured for the fly-in CLI.
+        """
         parser = argparse.ArgumentParser(
+            prog="fly-in",
             description="Simulate drones on a map",
         )
         parser.add_argument("config", nargs="?", help="path to a map")
         parser.add_argument(
-            "--validate", action="store_true",
+            "--validate",
+            action="store_true",
             help="validate without simulating",
         )
         parser.add_argument(
@@ -111,7 +172,9 @@ class CliApplication:
         )
         modes = parser.add_mutually_exclusive_group()
         modes.add_argument(
-            "--gui", action="store_true", help="desktop playback",
+            "--gui",
+            action="store_true",
+            help="desktop playback",
         )
         modes.add_argument(
             "--terminal", action="store_true", help="terminal simulation"
@@ -141,21 +204,42 @@ class CliApplication:
             help="terminal detail level",
         )
         parser.add_argument(
-            '--time-budget', type=float, default=None,
-            help='planning seconds; unlimited optimal, heuristic default 1',
+            "--time-budget",
+            type=float,
+            default=None,
+            help="planning seconds; unlimited optimal, heuristic default 1",
         )
-        parser.add_argument('--seed', type=int, default=None,
-                            help='deterministic LNS random seed (default: 0)')
-        parser.add_argument('--max-iter', type=int, default=None,
-                            help='maximum LNS repairs (default: 200)')
         parser.add_argument(
-            '--node-budget', type=int, default=None,
-            help='CT nodes; unlimited optimal, heuristic default 10000',
+            "--seed",
+            type=int,
+            default=None,
+            help="deterministic LNS random seed (default: 0)",
+        )
+        parser.add_argument(
+            "--max-iter",
+            type=int,
+            default=None,
+            help="maximum LNS repairs (default: 200)",
+        )
+        parser.add_argument(
+            "--node-budget",
+            type=int,
+            default=None,
+            help="CT nodes; unlimited optimal, heuristic default 10000",
         )
         return parser
 
     def run(self, argv: list[str] | None = None) -> None:
-        """Execute validation, playback, or benchmarks from arguments."""
+        """Execute validation, playback, or benchmarking from arguments.
+
+        Args:
+            argv (list[str] | None): Arguments excluding the executable name;
+                ``None`` uses the process command line.
+
+        Raises:
+            SystemExit: For argparse usage errors, benchmark exit status, or
+                invalid run configuration.
+        """
         arguments_list = list(sys.argv[1:] if argv is None else argv)
         if arguments_list and arguments_list[0] == "benchmark":
             from fly_in.benchmark import BenchmarkApplication
@@ -164,11 +248,14 @@ class CliApplication:
         parser = self.argument_parser()
         arguments = parser.parse_args(arguments_list)
         parameters = {
-            key: value for key, value in (
-                ('time_budget', arguments.time_budget),
-                ('seed', arguments.seed), ('max_iter', arguments.max_iter),
-                ('node_budget', arguments.node_budget),
-            ) if value is not None
+            key: value
+            for key, value in (
+                ("time_budget", arguments.time_budget),
+                ("seed", arguments.seed),
+                ("max_iter", arguments.max_iter),
+                ("node_budget", arguments.node_budget),
+            )
+            if value is not None
         }
         arguments.solver_parameters = parameters
         if not arguments.config and not sys.stdin.isatty():
@@ -192,7 +279,9 @@ class CliApplication:
                 use_gui = self.select_mode()
             if use_gui:
                 gui_args = (
-                    path, arguments.map_root.expanduser(), arguments.solver,
+                    path,
+                    arguments.map_root.expanduser(),
+                    arguments.solver,
                     arguments.output_dir.expanduser(),
                     arguments.records_dir.expanduser(),
                 )
@@ -211,13 +300,27 @@ class CliApplication:
         config: "MapConfig",
         arguments: argparse.Namespace,
     ) -> None:
-        """Execute and persist one run, including partial failure records."""
+        """Execute and persist a run, including partial failure records.
+
+        Args:
+            path (Path): Source map path.
+            config (MapConfig): Parsed map configuration.
+            arguments (argparse.Namespace): Parsed CLI options and paths.
+
+        Raises:
+            RuntimeError: If planning or simulation fails, including when a
+                keyboard interruption is converted to cancellation.
+            ValueError: If solver actions violate simulation constraints.
+            OSError: If source or run artifacts cannot be accessed.
+        """
         from fly_in.runs import RunSession
 
         simulation = Simulation.from_config(
-            config, SolverFactory(
-                path.stem, arguments.records_dir.expanduser(),
-            ).create(arguments.solver, arguments.solver_parameters)
+            config,
+            SolverFactory(
+                path.stem,
+                arguments.records_dir.expanduser(),
+            ).create(arguments.solver, arguments.solver_parameters),
         )
         session = RunSession(
             path,
@@ -236,7 +339,8 @@ class CliApplication:
             started = perf_counter()
             if isinstance(simulation.solver, PreparableSolver):
                 simulation.solver.prepare(
-                    simulation.network, simulation.drones,
+                    simulation.network,
+                    simulation.drones,
                 )
             session.planning_duration_seconds = perf_counter() - started
             session.planning_provenance = PlanningProvenance.capture(
@@ -247,7 +351,8 @@ class CliApplication:
             result = simulation.run(on_turn=visualizer.render_turn)
         except (RuntimeError, ValueError, KeyboardInterrupt) as error:
             status: Literal["cancelled", "failed"] = (
-                "cancelled" if isinstance(error, KeyboardInterrupt)
+                "cancelled"
+                if isinstance(error, KeyboardInterrupt)
                 else "failed"
             )
             if session.planning_provenance is None:
@@ -271,8 +376,3 @@ class CliApplication:
             f"Record saved to {artifacts.record_path}",
             file=sys.stderr,
         )
-
-
-def main(argv: list[str] | None = None) -> None:
-    """Delegate the installed command to its application owner."""
-    CliApplication().run(argv)

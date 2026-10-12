@@ -50,7 +50,13 @@ connection: x-g
 def test_remaining_parser_errors_report_physical_line_and_cause(
     text: str, line: int, cause: str,
 ) -> None:
-    """Malformed text produces a controlled, actionable parser diagnostic."""
+    """Keep line and cause in diagnostics for malformed map records.
+
+    Args:
+        text (str): Invalid map text from one parser edge case.
+        line (int): Expected physical source line.
+        cause (str): Expected identifying phrase in the error.
+    """
     with pytest.raises(ConfigParseError) as error:
         Parser().parse_text(text)
     assert f"line {line}" in str(error.value)
@@ -59,7 +65,11 @@ def test_remaining_parser_errors_report_physical_line_and_cause(
 
 @pytest.mark.parametrize("capacity", ["-1", "+1", "1.0", "1_0", "nan"])
 def test_link_capacity_requires_positive_integer_text(capacity: str) -> None:
-    """Connections must reject coercible or nonnumeric capacity spellings."""
+    """Reject connection capacities that are not positive integer text.
+
+    Args:
+        capacity (str): Invalid metadata spelling supplied to the parser.
+    """
     with pytest.raises(ConfigParseError, match="line 4.*positive integer"):
         Parser().parse_text(
             HEADER + f"connection: s-g [max_link_capacity={capacity}]",
@@ -70,7 +80,12 @@ def test_link_capacity_requires_positive_integer_text(capacity: str) -> None:
     ("zone=restricted", "color=arbitrary_colour", "max_drones=2"),
 )))
 def test_all_metadata_orders_preserve_values(items: tuple[str, ...]) -> None:
-    """The specification permits all six orders of the three hub tags."""
+    """Preserve zone values for every allowed metadata field order.
+
+    Args:
+        items (tuple[str, ...]): Permutation of zone, color, and capacity
+            metadata entries.
+    """
     config = Parser().parse_text(
         HEADER + f"hub: a -20 +30 [{' '.join(items)}]",
     )
@@ -97,7 +112,12 @@ connection: goal:!-база[0]
 
 @pytest.mark.parametrize("kind", ["missing", "directory"])
 def test_unreadable_map_path_is_controlled(kind: str, tmp_path: Path) -> None:
-    """Both missing files and directories become configuration errors."""
+    """Convert missing paths and directories to configuration errors.
+
+    Args:
+        kind (str): Path condition, either ``missing`` or ``directory``.
+        tmp_path (Path): Temporary root used to construct the test path.
+    """
     path = tmp_path / kind
     if kind == "directory":
         path.mkdir()
@@ -106,7 +126,14 @@ def test_unreadable_map_path_is_controlled(kind: str, tmp_path: Path) -> None:
 
 
 def snapshot(simulation: Simulation) -> tuple[object, ...]:
-    """Capture mutable simulation data before rejecting an illegal row."""
+    """Capture mutable state for before-and-after comparisons.
+
+    Args:
+        simulation (Simulation): State whose mutations are being checked.
+
+    Returns:
+        tuple[object, ...]: Tuple containing copied state values.
+    """
     return (
         simulation.turn, [list(row) for row in simulation.history],
         simulation.metrics.summary(),
@@ -130,7 +157,12 @@ def snapshot(simulation: Simulation) -> tuple[object, ...]:
 def test_illegal_solver_action_has_no_partial_simulation_effects(
     action: str, cause: str,
 ) -> None:
-    """Reject bad identifiers, nonedges, blocked entries and bad durations."""
+    """Reject an illegal action without partially changing run state.
+
+    Args:
+        action (str): Invalid movement command supplied by the scripted solver.
+        cause (str): Expected part of the raised action error.
+    """
     simulation = Simulation.from_config(Parser().parse_text(MOVEMENT_MAP),
                                         Script([[action]]))
     before = snapshot(simulation)
@@ -144,7 +176,12 @@ def test_illegal_solver_action_has_no_partial_simulation_effects(
     [["D1-a"], ["D1-g"], ["D1-a"]],
 ], ids=["in-transit", "already-delivered"])
 def test_unavailable_drone_cannot_be_commanded(rows: list[list[str]]) -> None:
-    """Neither forced arrivals nor delivered drones accept new departures."""
+    """Reject commands for drones in transit or already delivered.
+
+    Args:
+        rows (list[list[str]]): Scripted rows that first change drone state
+            and then attempt an unavailable departure.
+    """
     simulation = Simulation.from_config(Parser().parse_text(MOVEMENT_MAP),
                                         Script([list(row) for row in rows]))
     for _ in range(len(rows) - 1):
@@ -177,7 +214,13 @@ connection: b-g
 def test_cli_process_reports_errors_without_traceback_or_movements(
     failure: str, tmp_path: Path,
 ) -> None:
-    """Validate error handling through the real process entry point."""
+    """Check controlled CLI errors through a real subprocess.
+
+    Args:
+        failure (str): Input condition, such as syntax, reachability, or
+            missing-file failure.
+        tmp_path (Path): Isolated root for the map and generated artifacts.
+    """
     path = tmp_path / "map.txt"
     if failure != "missing":
         path.write_text("not a map" if failure == "syntax" else HEADER,

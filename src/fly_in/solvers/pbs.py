@@ -26,13 +26,22 @@ from fly_in.solvers.prioritized import PrioritizedPlanner, SeedPlanner
 
 @dataclass(frozen=True)
 class PriorityDAG:
-    """Immutable higher-to-lower priority relations over a fixed fleet."""
+    """Immutable higher-to-lower priority relations over a fixed fleet.
+
+    Attributes:
+        agents (tuple[str, ...]): Fixed fleet represented by this DAG.
+        edges (frozenset[tuple[str, str]]): Higher-to-lower relations.
+    """
 
     agents: tuple[str, ...]
     edges: frozenset[tuple[str, str]] = field(default_factory=frozenset)
 
     def _children(self) -> dict[str, list[str]]:
-        """Index successor edges in stable numerical drone order."""
+        """Index successor edges in stable numerical drone order.
+
+        Returns:
+            dict[str, list[str]]: Each agent's direct lower-priority agents.
+        """
         children: dict[str, list[str]] = {agent: [] for agent in self.agents}
         for high, low in self.edges:
             children[high].append(low)
@@ -41,7 +50,11 @@ class PriorityDAG:
         return children
 
     def has_cycle(self) -> bool:
-        """Detect strongly connected components using iterative Tarjan DFS."""
+        """Detect cycles with iterative Tarjan depth-first search.
+
+        Returns:
+            bool: Whether any directed cycle exists.
+        """
         children = self._children()
         indices: dict[str, int] = {}
         low: dict[str, int] = {}
@@ -87,14 +100,32 @@ class PriorityDAG:
         return False
 
     def add(self, high: str, low: str) -> PriorityDAG | None:
-        """Return a new consistent ordering, or None when it makes a cycle."""
+        """Return a new consistent relation, or None if it makes a cycle.
+
+        Args:
+            high (str): Agent that must plan before ``low``.
+            low (str): Agent that must plan after ``high``.
+
+        Returns:
+            PriorityDAG | None: New acyclic relation, or None on a cycle.
+
+        Raises:
+            ValueError: If either identifier is outside this DAG's fleet.
+        """
         if high not in self.agents or low not in self.agents:
             raise ValueError('priority relation refers to an unknown drone')
         candidate = PriorityDAG(self.agents, self.edges | {(high, low)})
         return None if candidate.has_cycle() else candidate
 
     def topological(self) -> tuple[str, ...]:
-        """Order higher agents before lower ones, breaking ties numerically."""
+        """Order higher agents before lower ones, breaking ties numerically.
+
+        Returns:
+            tuple[str, ...]: Topological order with deterministic tie breaks.
+
+        Raises:
+            ValueError: If the stored relations contain a directed cycle.
+        """
         children = self._children()
         incoming = {agent: 0 for agent in self.agents}
         for _, low in self.edges:
@@ -116,7 +147,14 @@ class PriorityDAG:
         return tuple(order)
 
     def ancestors(self) -> dict[str, set[str]]:
-        """Find transitive higher-priority sets for reservations."""
+        """Find transitive higher-priority sets for reservations.
+
+        Returns:
+            dict[str, set[str]]: Ancestor agents keyed by each lower agent.
+
+        Raises:
+            ValueError: If the stored relations contain a directed cycle.
+        """
         children = self._children()
         ancestors: dict[str, set[str]] = {
             agent: set() for agent in self.agents
@@ -130,19 +168,37 @@ class PriorityDAG:
 
 @dataclass
 class _Node:
-    """One consistent-priority search node and its current candidate paths."""
+    """One consistent-priority search node and its current candidate paths.
+
+    Attributes:
+        priorities (PriorityDAG): Partial acyclic priority relation.
+        paths (dict[str, TimedPath]): Paths consistent with the relation.
+    """
 
     priorities: PriorityDAG
     paths: dict[str, TimedPath]
 
 
 class PBSSolver(ScheduledSolver):
-    """Explore partial priorities while retaining a valid floor on cutoff."""
+    """Partial-priority search that retains a valid floor on cutoff.
+
+    Attributes:
+        time_budget (float): Cooperative search duration in seconds.
+        node_budget (int): Maximum number of high-level nodes processed.
+    """
 
     def __init__(
         self, time_budget: float = 1.0, node_budget: int = 10000,
     ) -> None:
-        """Configure cooperative seconds and high-level node expansions."""
+        """Configure cooperative seconds and high-level node expansions.
+
+        Args:
+            time_budget (float): Finite, nonnegative search duration.
+            node_budget (int): Nonnegative high-level node limit.
+
+        Raises:
+            ValueError: If either configured limit is invalid.
+        """
         super().__init__()
         if not isfinite(time_budget) or time_budget < 0:
             raise ValueError('PBS time budget must be finite and nonnegative')
@@ -155,7 +211,16 @@ class PBSSolver(ScheduledSolver):
     def _pair(
         conflict: Conflict, ancestors: dict[str, set[str]],
     ) -> tuple[str, str] | None:
-        """Choose an unordered pair from the minimal overcapacity set."""
+        """Choose an unordered pair from the minimal overcapacity set.
+
+        Args:
+            conflict (Conflict): Capacity violation to resolve.
+            ancestors (dict[str, set[str]]): Existing transitive priorities.
+
+        Returns:
+            tuple[str, str] | None: Unordered pair with no relation yet, or
+                None if every pair is already ordered.
+        """
         for index, first in enumerate(conflict.agents):
             for second in conflict.agents[index+1:]:
                 if (first not in ancestors[second]
@@ -168,7 +233,24 @@ class PBSSolver(ScheduledSolver):
         engine: SpaceTimeAStar, node: _Node, priorities: PriorityDAG,
         lower: str, horizon: int, budget: SearchBudget,
     ) -> dict[str, TimedPath] | None:
-        """Repair the lower agent and descendants against ancestors."""
+        """Repair the lower agent and descendants against their ancestors.
+
+        Args:
+            engine (SpaceTimeAStar): Low-level path search engine.
+            node (_Node): Parent search node and its current paths.
+            priorities (PriorityDAG): Child relation to satisfy.
+            lower (str): Newly lower-priority agent.
+            horizon (int): Latest permitted arrival turn.
+            budget (SearchBudget): Cooperative interruption controls.
+
+        Returns:
+            dict[str, TimedPath] | None: Repaired paths, or None if any
+                required replan is infeasible.
+
+        Raises:
+            PlanningCancelled: If cancellation is requested.
+            SearchTimeout: If the budget deadline elapses.
+        """
         ancestors = priorities.ancestors()
         paths = dict(node.paths)
         for agent in priorities.topological():
@@ -195,6 +277,21 @@ class PBSSolver(ScheduledSolver):
         Finishing the initial floor uses a soft deadline but remains
         cancellable. Every subsequent A* and high-level branch observes the
         shared deadline. Only explicit cancellation escapes to the caller.
+
+        Args:
+            network (DroneNetwork): Topology to plan.
+            drone_ids (list[str]): Fleet identifiers to schedule.
+            initial (Solution | None): Optional feasible incumbent.
+            budget (SearchBudget | None): Parent limits intersected with the
+                solver's duration.
+
+        Returns:
+            Solution: Best feasible schedule found before a cutoff.
+
+        Raises:
+            ValueError: If the floor or network cannot support the requested
+                fleet.
+            PlanningCancelled: If explicit cancellation is requested.
         """
         limits = (budget or SearchBudget()).child(self.time_budget)
         SearchBudget(cancelled=limits.cancelled).check()

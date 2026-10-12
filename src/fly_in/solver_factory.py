@@ -15,12 +15,23 @@ SOLVER_CHOICES = (
 
 
 class SolverFactory:
-    """Bind source/log context and create a fresh solver for each run."""
+    """Factory for fresh solvers with shared source and log context.
+
+    Attributes:
+        map_name (str): Map label used by adaptive solver diagnostics.
+        records_dir (Path): Directory used for solver run logs.
+    """
 
     def __init__(
         self, map_name: str = 'in_memory', records_dir: Path | None = None,
     ) -> None:
-        """Capture the map identity and directory used by adaptive logs."""
+        """Capture the map identity and directory used by adaptive logs.
+
+        Args:
+            map_name (str): Map label associated with adaptive solver logs.
+            records_dir (Path | None): Log directory, defaulting to the
+                current directory's ``records`` folder.
+        """
         self.map_name = map_name
         self.records_dir = records_dir or Path.cwd() / 'records'
 
@@ -28,7 +39,24 @@ class SolverFactory:
         self, name: str = DEFAULT_SOLVER,
         options: Mapping[str, float | int] | None = None,
     ) -> Solver:
-        """Build a fresh named strategy with its existing search limits."""
+        """Build a fresh named strategy with configured search limits.
+
+        Args:
+            name (str): Registered solver key.
+            options (Mapping[str, float | int] | None): Optional time, node,
+                iteration, and random-seed settings. Recognized keys are
+                ``time_budget`` (seconds), ``node_budget``, ``max_iter``, and
+                ``seed``; other keys are ignored. Omitted optimal-search
+                budgets are unlimited. Other strategies default to 1 second,
+                10000 nodes, 200 iterations, and seed 0 where applicable.
+
+        Returns:
+            Solver: Newly constructed solver instance.
+
+        Raises:
+            ValueError: If ``name`` is not registered or a selected solver
+                rejects one of its configured limits.
+        """
         opts = options or {}
         if name == 'optimal':
             from fly_in.solvers.optimal import OptimalSolver

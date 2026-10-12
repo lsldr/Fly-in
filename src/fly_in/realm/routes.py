@@ -17,18 +17,29 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class RouteAnalysis:
-    """Fresh scores and strict-improvement predecessors for one search."""
+    """Fresh scores and strict-improvement predecessors for one search.
+
+    Attributes:
+        scores (dict[str, tuple[int, int]]): Best discovered score pair by
+            zone name.
+        predecessors (dict[str, str]): Previous zone on each improved route.
+    """
 
     scores: dict[str, tuple[int, int]]
     predecessors: dict[str, str]
 
 
 class NativeDijkstra:
-    """Analyze one immutable topology using an explicit entry-score policy.
+    """Dijkstra analyzer with an explicit entry-score policy.
 
     Nonnegative score pairs are ordered lexicographically. Equal scores retain
     the first predecessor; zone names break queue ties. No search state or
     cache survives an analysis call, so separate callers never share mutations.
+
+    Attributes:
+        network (DroneNetwork): Topology analyzed by this instance.
+        cost (Callable[[Zone], tuple[int, int]]): Per-entry score policy.
+        budget (SearchBudget | None): Optional search interruption checks.
     """
 
     def __init__(
@@ -36,7 +47,15 @@ class NativeDijkstra:
         cost: Callable[[Zone], tuple[int, int]],
         budget: SearchBudget | None = None,
     ) -> None:
-        """Bind topology, entry scoring, and optional interruption checks."""
+        """Bind topology, entry scoring, and optional interruption checks.
+
+        Args:
+            network (DroneNetwork): Topology traversed by this analyzer.
+            cost (Callable[[Zone], tuple[int, int]]): Nonnegative score pair
+                charged according to traversal direction.
+            budget (SearchBudget | None): Optional object checked before each
+                queue removal.
+        """
         self.network = network
         self.cost = cost
         self.budget = budget
@@ -49,6 +68,15 @@ class NativeDijkstra:
         Forward traversal charges the neighbor; reverse traversal charges the
         current zone. Blocked zones are never expanded or entered. A result
         limited to a goal may include unsettled scores outside its route.
+
+        Args:
+            origin (str): Name of the initial zone.
+            reverse (bool): Traverse links backward and charge the current
+                zone when true.
+            goal (str | None): Optional zone at which to stop once settled.
+
+        Returns:
+            RouteAnalysis: Scores and predecessor links discovered by search.
         """
         scores = {origin: (0, 0)}
         predecessors: dict[str, str] = {}

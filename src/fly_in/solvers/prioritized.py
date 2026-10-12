@@ -12,10 +12,22 @@ __all__ = ['PrioritizedPlanner', 'PriorityBasedSolver', 'PlanningCancelled',
 
 
 class PrioritizedPlanner(ScheduledSolver):
-    """Obtain a feasible floor by reserving drones in numeric ID order."""
+    """Feasible floor planner reserving drones in numeric ID order.
+
+    Attributes:
+        horizon (int | None): Optional fixed latest arrival turn.
+    """
 
     def __init__(self, horizon: int | None = None) -> None:
-        """Optionally impose an explicit horizon, otherwise grow safely."""
+        """Optionally impose an explicit horizon, otherwise grow safely.
+
+        Args:
+            horizon (int | None): Positive arrival limit, or None to choose a
+                constructive bound that grows with prior reservations.
+
+        Raises:
+            ValueError: If an explicit horizon is less than one turn.
+        """
         super().__init__()
         if horizon is not None and horizon < 1:
             raise ValueError('planning horizon must be positive')
@@ -25,7 +37,24 @@ class PrioritizedPlanner(ScheduledSolver):
         self, network: DroneNetwork, drone_ids: list[str],
         initial: Solution | None = None, budget: SearchBudget | None = None,
     ) -> Solution:
-        """Search all agents using a cached exact distance heuristic."""
+        """Search all agents using a cached exact distance heuristic.
+
+        Args:
+            network (DroneNetwork): Topology to route.
+            drone_ids (list[str]): Fleet identifiers to schedule.
+            initial (Solution | None): Unused incumbent accepted by the solver
+                interface.
+            budget (SearchBudget | None): Optional cancellation/deadline.
+
+        Returns:
+            Solution: Feasible paths in deterministic reservation order.
+
+        Raises:
+            ValueError: If the goal is unreachable.
+            RuntimeError: If a fixed horizon cannot fit a route.
+            PlanningCancelled: If the budget requests cancellation.
+            SearchTimeout: If the budget deadline elapses.
+        """
         limits = budget or SearchBudget()
         engine = SpaceTimeAStar(network, limits)
         if network.start.name not in engine.distances:
@@ -39,7 +68,23 @@ class PrioritizedPlanner(ScheduledSolver):
         self, network: DroneNetwork, drone_ids: list[str],
         engine: SpaceTimeAStar, budget: SearchBudget, duration: int,
     ) -> dict[str, TimedPath]:
-        """Reserve paths, retaining a constructive serial completion bound."""
+        """Reserve paths, retaining a constructive serial completion bound.
+
+        Args:
+            network (DroneNetwork): Topology being planned.
+            drone_ids (list[str]): Drone identifiers to schedule.
+            engine (SpaceTimeAStar): Shared low-level search engine.
+            budget (SearchBudget): Cooperative search limits.
+            duration (int): Shortest route duration used in the horizon bound.
+
+        Returns:
+            dict[str, TimedPath]: One reserved path per requested drone.
+
+        Raises:
+            RuntimeError: If no route fits the selected horizon.
+            PlanningCancelled: If the budget requests cancellation.
+            SearchTimeout: If the budget deadline elapses.
+        """
         paths: dict[str, TimedPath] = {}
         reservations = ReservationTable(network)
         latest = 0
@@ -68,10 +113,18 @@ class PriorityBasedSolver(PrioritizedPlanner):
 
 
 class SeedPlanner:
-    """Acquire a feasible incumbent through an injected floor planner."""
+    """Feasible incumbent provider using an injected floor planner.
+
+    Attributes:
+        floor_planner (ScheduledSolver): Planner used when no incumbent exists.
+    """
 
     def __init__(self, floor_planner: ScheduledSolver) -> None:
-        """Bind the planner used when no incumbent has been supplied."""
+        """Bind the planner used when no incumbent has been supplied.
+
+        Args:
+            floor_planner (ScheduledSolver): Planner that constructs the floor.
+        """
         self.floor_planner = floor_planner
 
     def obtain(
@@ -83,6 +136,20 @@ class SeedPlanner:
         Callers implement soft local improvement deadlines by passing the
         parent budget here. A valid supplied floor remains available as
         diagnostic data after a deadline; cancellation always takes priority.
+
+        Args:
+            network (DroneNetwork): Topology to plan.
+            drone_ids (list[str]): Exact fleet identifiers.
+            initial (Solution | None): Optional candidate floor to validate.
+            budget (SearchBudget): Parent interruption controls.
+
+        Returns:
+            Solution: Validated incumbent or a newly planned feasible floor.
+
+        Raises:
+            ValueError: If the supplied or generated floor is invalid.
+            PlanningCancelled: If the parent cancellation probe fires.
+            SearchTimeout: If planning exceeds its deadline.
         """
         SearchBudget(cancelled=budget.cancelled).check()
         if initial is not None:

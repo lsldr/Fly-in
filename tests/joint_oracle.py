@@ -14,7 +14,18 @@ JointState = tuple[Position, ...]
 def _options(
     network: DroneNetwork, position: Position,
 ) -> list[tuple[Position, str | None]]:
-    """Enumerate waits/departures, or force the next restricted arrival."""
+    """List legal single-drone waits, departures, or a forced arrival.
+
+    Args:
+        network (DroneNetwork): Topology and movement rules to inspect.
+        position (Position): Pair of location kind ("hub" or "transit") and
+            hub name; transit stores the destination of a restricted entry.
+
+    Returns:
+        list[tuple[Position, str | None]]: Next position and newly entered
+        link ID for each choice. Waits and forced arrivals use None for the
+        link. A delivered drone can only wait.
+    """
     kind, name = position
     if kind == "transit":
         return [(("hub", name), None)]
@@ -33,14 +44,24 @@ def _options(
 
 
 def exact_makespan(network: DroneNetwork, drones: int) -> int:
-    """Find the minimum turns by BFS of all legal simultaneous decisions.
+    """Find the minimum delivery time by enumerating joint states.
 
-    This uses no solver paths, constraints, reservation tables, or flow
-    bounds. A transit state must arrive next turn; only new departures
-    count toward link capacity under arrival-turn release. Delivered and
-    start occupancy are unlimited. Sorting collapses drone permutations.
-    Exhausting reachable states establishes that delivery is impossible.
-    Use only on small instances: joint state enumeration is exponential.
+    Use this oracle only on small instances: the state space grows
+    exponentially with fleet size. It uses no solver paths, reservations, or
+    flow bounds. Sort positions to treat drone permutations as the same
+    state. Count only new departures against each turn's link capacity;
+    restricted transit must arrive on the following turn.
+
+    Args:
+        network (DroneNetwork): Topology with unlimited start and end capacity.
+        drones (int): Nonnegative number of drones starting at the start hub.
+
+    Returns:
+        int: Minimum turns needed to deliver the fleet, or 0 for an empty
+            fleet.
+
+    Raises:
+        ValueError: Exhaustive exploration finds no complete delivery schedule.
     """
     initial = tuple(("hub", network.start.name) for _ in range(drones))
     queue: deque[tuple[JointState, int]] = deque([(initial, 0)])

@@ -1,5 +1,0 @@
-1. Verify that there is no possibility of reverse movement from hubs when it is
-unnecessary in prepared schedule solvers.
-2. Confirm that reverse movement of drones from restricted hubs also costs
-just 1 turn (check the subject), if leading to a regular hub.
-3. Complete the algorithm explanation doc.

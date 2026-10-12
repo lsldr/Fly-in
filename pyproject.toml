@@ -14,7 +14,7 @@ dependencies = [
 ]
 
 [project.scripts]
-fly-in = "fly_in.cli:main"
+fly-in = "fly_in.__main__:main"
 fly-in-gui = "fly_in.gui:main"
 
 [build-system]

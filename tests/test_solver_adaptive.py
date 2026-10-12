@@ -19,7 +19,12 @@ connection: h-g
 
 
 def test_budget_zero_keeps_floor_and_logs_one_record(tmp_path: Path) -> None:
-    """The soft initial deadline preserves feasibility and honest timing."""
+    """The soft initial deadline preserves feasibility and honest timing.
+
+    Args:
+        tmp_path (Path): Pytest temporary directory used for logs or generated
+            input.
+    """
     config = Parser().parse_text(MAP)
     path = tmp_path / 'run_log.jsonl'
     solver = AdaptiveSolver(time_budget=0, map_name='tiny', log_path=path)
@@ -42,7 +47,12 @@ def test_budget_zero_keeps_floor_and_logs_one_record(tmp_path: Path) -> None:
 def test_small_instance_attempts_icbs_when_budget_allows(
     tmp_path: Path,
 ) -> None:
-    """The feature policy sends tiny instances through the exact rung."""
+    """The feature policy sends tiny instances through the exact rung.
+
+    Args:
+        tmp_path (Path): Pytest temporary directory used for logs or generated
+            input.
+    """
     solver = AdaptiveSolver(time_budget=0.1,
                             log_path=tmp_path / 'run_log.jsonl')
     simulation = Simulation.from_config(Parser().parse_text(MAP), solver)

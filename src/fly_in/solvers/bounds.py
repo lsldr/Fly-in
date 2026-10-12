@@ -30,7 +30,20 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class InstanceProfile:
-    """Static instance features and a necessary completion-time bound."""
+    """Static instance features and a necessary completion-time bound.
+
+    Attributes:
+        fleet_size (int): Number of drones profiled.
+        vertices (int): Total hubs in the original map.
+        edges (int): Total connections in the original map.
+        density (float): Original edge count divided by hub count.
+        bottleneck_capacity (int): Maximum unrestricted flow through shared
+            resource capacities.
+        restricted_ratio (float): Fraction of original hubs that are
+            restricted.
+        shortest_distance (int): Minimum physical route duration in turns.
+        lower_bound (int): Necessary minimum makespan from time-window flow.
+    """
 
     fleet_size: int
     vertices: int
@@ -44,7 +57,13 @@ class InstanceProfile:
 
 @dataclass
 class _Arc:
-    """Residual edge paired with its reverse arc."""
+    """Residual edge paired with its reverse arc.
+
+    Attributes:
+        destination (int): Index of the endpoint vertex.
+        reverse (int): Index of the paired arc in the endpoint adjacency.
+        capacity (int): Remaining integer flow capacity.
+    """
 
     destination: int
     reverse: int
@@ -52,27 +71,59 @@ class _Arc:
 
 
 class _Flow:
-    """Edmonds-Karp integer max flow, with no recursion or graph package."""
+    """Edmonds-Karp integer max flow, with no recursion or graph package.
+
+    Attributes:
+        budget (SearchBudget | None): Optional cooperative interruption limit.
+        adjacency (list[list[_Arc]]): Mutable residual graph.
+    """
 
     def __init__(self, budget: SearchBudget | None = None) -> None:
-        """Initialize residual adjacency and optional interruption checks."""
+        """Initialize residual adjacency and optional interruption checks.
+
+        Args:
+            budget (SearchBudget | None): Optional cooperative limits.
+        """
         self.budget = budget
         self.adjacency: list[list[_Arc]] = []
 
     def vertex(self) -> int:
-        """Allocate a vertex and return its index."""
+        """Allocate a vertex and return its index.
+
+        Returns:
+            int: Index of the new vertex in the residual graph.
+        """
         self.adjacency.append([])
         return len(self.adjacency) - 1
 
     def connect(self, source: int, target: int, capacity: int) -> None:
-        """Create a directed edge and its residual reverse."""
+        """Create a directed edge and its residual reverse.
+
+        Args:
+            source (int): Index of the edge's source vertex.
+            target (int): Index of the edge's destination vertex.
+            capacity (int): Nonnegative integer forward capacity.
+        """
         forward = _Arc(target, len(self.adjacency[target]), capacity)
         backward = _Arc(source, len(self.adjacency[source]), 0)
         self.adjacency[source].append(forward)
         self.adjacency[target].append(backward)
 
     def maximum(self, source: int, target: int, limit: int) -> int:
-        """Augment shortest residual paths until saturated or at limit."""
+        """Augment shortest residual paths until saturated or at the limit.
+
+        Args:
+            source (int): Residual source vertex.
+            target (int): Residual sink vertex.
+            limit (int): Maximum flow to send before stopping.
+
+        Returns:
+            int: Flow sent, between zero and ``limit``.
+
+        Raises:
+            PlanningCancelled: If the optional budget requests cancellation.
+            SearchTimeout: If the optional budget deadline elapses.
+        """
         total = 0
         while total < limit:
             if self.budget is not None:
@@ -112,6 +163,11 @@ class ResourceWindow:
 
     Independent earliest-use and remaining-distance minima relax correlations
     between routes. Sufficient aggregate capacity cannot prove feasibility.
+
+    Attributes:
+        fleet_size (int): Maximum number of units counted in aggregate flow.
+        makespan (int | None): Candidate completion turn, or None for static
+            capacities.
     """
 
     fleet_size: int
@@ -123,6 +179,14 @@ class ResourceWindow:
         For a candidate makespan, multiply capacity by the number of
         possible use turns that leave enough remaining travel time.
         This relaxed budget is necessary for feasibility, not a schedule.
+
+        Args:
+            base (int): Resource's per-turn capacity.
+            earliest (int): Earliest possible completed-turn use.
+            remaining (int): Minimum travel turns after resource use.
+
+        Returns:
+            int: Aggregate usable capacity, capped by the fleet size.
         """
         if self.makespan is None:
             return base
@@ -133,12 +197,17 @@ class ResourceWindow:
 
 
 class NetworkProfiler:
-    """Own native latency and capacity analysis for one network preparation.
+    """Native latency and capacity analysis for one network preparation.
 
     Topology and resource capacities must remain immutable during preparation.
     Each profile rebuilds its distances and residual flow without caching.
     Bind a new profiler when preparing a different network.
     Optional interruption checks share the caller's deadline and cancellation.
+
+    Attributes:
+        network (DroneNetwork): Topology profiled by this instance.
+        budget (SearchBudget | None): Optional cooperative interruption limit.
+        routes (NativeDijkstra): Native route analysis engine.
     """
 
     def __init__(
@@ -146,13 +215,23 @@ class NetworkProfiler:
         network: DroneNetwork,
         budget: SearchBudget | None = None,
     ) -> None:
-        """Bind network topology and an optional cooperative search budget."""
+        """Bind network topology and an optional cooperative search budget.
+
+        Args:
+            network (DroneNetwork): Topology kept fixed for this profile.
+            budget (SearchBudget | None): Optional deadline and cancellation.
+        """
         self.network = network
         self.budget = budget
         self.routes = NativeDijkstra(network, self._entry_score, budget)
 
     def _check_budget(self) -> None:
-        """Honor cancellation and deadlines when a budget is supplied."""
+        """Honor cancellation and deadlines when a budget is supplied.
+
+        Raises:
+            PlanningCancelled: If the budget requests cancellation.
+            SearchTimeout: If the budget deadline elapses.
+        """
         if self.budget is not None:
             self.budget.check()
 
@@ -170,6 +249,17 @@ class NetworkProfiler:
         upper bound finds the first M satisfying the aggregate flow relaxation.
         Equality of a valid schedule's makespan and this bound proves optimal
         makespan, without the total path cost optimization guarantee.
+
+        Args:
+            fleet_size (int): Positive number of drones in the fleet.
+
+        Returns:
+            InstanceProfile: Features and certified necessary lower bound.
+
+        Raises:
+            ValueError: If the fleet is empty or the goal is unreachable.
+            PlanningCancelled: If the optional budget requests cancellation.
+            SearchTimeout: If the optional deadline elapses.
         """
         self._check_budget()
         if fleet_size < 1:
@@ -224,7 +314,15 @@ class NetworkProfiler:
         origin: str,
         reverse: bool = False,
     ) -> dict[str, int]:
-        """Return physical durations from the shared route-score analysis."""
+        """Return physical durations from the shared route-score analysis.
+
+        Args:
+            origin (str): Hub whose distances are measured.
+            reverse (bool): Whether to traverse the graph toward predecessors.
+
+        Returns:
+            dict[str, int]: Minimum physical durations for reachable hubs.
+        """
         return {
             name: score[0]
             for name, score in self.route_scores(origin, reverse).items()
@@ -241,12 +339,27 @@ class NetworkProfiler:
         use the current zone's duration and priority flag. Blocked zones are
         excluded from expansion. Fresh score maps are returned for each call.
         Priority breaks equal-duration ties without changing physical bounds.
+
+        Args:
+            origin (str): Hub at which route analysis begins.
+            reverse (bool): Whether to reverse the direction of analysis.
+
+        Returns:
+            dict[str, tuple[int, int]]: Per-hub duration and priority scores.
         """
         return self.routes.analyze(origin, reverse).scores
 
     @staticmethod
     def _entry_score(zone: Zone) -> tuple[int, int]:
-        """Charge physical entry duration with priority as a secondary tie."""
+        """Charge physical entry duration with priority as a secondary tie.
+
+        Args:
+            zone (Zone): Destination whose entry score is calculated.
+
+        Returns:
+            tuple[int, int]: Physical movement duration and non-priority
+                penalty.
+        """
         return (
             zone.movement_cost(),
             int(zone.zone_type is not ZoneType.PRIORITY),
@@ -259,7 +372,22 @@ class NetworkProfiler:
         limit: int,
         makespan: int | None = None,
     ) -> int:
-        """Compute shared-resource flow or an aggregate time-window bound."""
+        """Compute shared-resource flow or an aggregate time-window bound.
+
+        Args:
+            from_start (dict[str, int]): Minimum durations from the start.
+            to_goal (dict[str, int]): Minimum durations to the goal.
+            limit (int): Maximum flow or fleet size for the relaxation.
+            makespan (int | None): Candidate completion turn, or None for the
+                unrestricted static bottleneck.
+
+        Returns:
+            int: Maximum relaxed flow through shared hubs and links.
+
+        Raises:
+            PlanningCancelled: If the optional budget requests cancellation.
+            SearchTimeout: If the optional deadline elapses.
+        """
         flow = _Flow(self.budget)
         vertices: dict[str, tuple[int, int]] = {}
 

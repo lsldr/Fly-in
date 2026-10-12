@@ -14,7 +14,24 @@ from fly_in.solvers.protocol import PreparableSolver, Solver
 
 
 class PlanningWorker(QThread):
-    """Transfer a prepared simulation only after all planning mutations end."""
+    """Background Qt thread for preparing isolated simulation state.
+
+    Signals:
+        prepared (Signal[int, object, float]): Emits generation, result, and
+            elapsed seconds after successful preparation.
+        failed (Signal[int, str]): Emits generation and a planning error.
+
+    Attributes:
+        generation (int): Identifier used to reject stale worker results.
+        config (MapConfig): Deep copy of the requested map configuration.
+        solver_name (str): Registered solver name selected for planning.
+        solver_parameters (dict[str, float | int]): Solver factory options.
+        map_name (str): Name used by solver-specific records.
+        records_dir (Path | None): Optional directory for solver records.
+        cancelled (Event): Set when the worker should suppress its result.
+        planning_provenance (PlanningProvenance): Captured status and proof.
+        planning_duration_seconds (float): Time spent preparing simulation.
+    """
 
     prepared = Signal(int, object, float)
     failed = Signal(int, str)
@@ -24,7 +41,20 @@ class PlanningWorker(QThread):
         solver_parameters: dict[str, float | int] | None = None,
         map_name: str = 'in_memory', records_dir: Path | None = None,
     ) -> None:
-        """Capture an isolated input and cancellation token."""
+        """Capture an isolated input and cancellation token.
+
+        Args:
+            generation (int): Caller-assigned identifier for this planning
+                request.
+            config (MapConfig): Map configuration to deep-copy before planning.
+            solver_name (str): Solver registered with the factory.
+            solver_parameters (dict[str, float | int] | None): Optional numeric
+                solver options.
+            map_name (str): Name used for solver records; defaults to
+                ``in_memory``.
+            records_dir (Path | None): Optional directory for persisted solver
+                records.
+        """
         super().__init__()
         self.generation = generation
         self.config = config.model_copy(deep=True)
@@ -37,11 +67,17 @@ class PlanningWorker(QThread):
         self.planning_duration_seconds = 0.0
 
     def cancel(self) -> None:
-        """Ask the planner to stop at its next cancellation checkpoint."""
+        """Set the cancellation event checked by cooperative planners."""
         self.cancelled.set()
 
     def run(self) -> None:
-        """Build and prepare isolated state, then emit a queued result."""
+        """Build isolated state and emit its result through Qt signals.
+
+        The ``prepared`` or ``failed`` signal is emitted only if cancellation
+        was not requested. Factory, preparation, and construction failures of
+        type RuntimeError, ValueError, or OSError are reported through
+        ``failed``; the worker thread itself does not propagate them.
+        """
         started = perf_counter()
         solver: Solver | None = None
         try:

@@ -641,9 +641,10 @@ laptop.
 
 ### AI assistance
 
+- Drafting this README
 - Understanding pathfinding algorithms and methods used in them
 - Discussing the whole project's design, separation of visualization from core simulation and output
+- Expanding the docs with sections other than the summary at their top
 - Test scripts' code
 - GUI implementation (QT-based GUI)
 - Map profiling and benchmarking code (checking least possible turns for a valid solution)
-- Drafting this README
