@@ -646,10 +646,26 @@ strategies (excluding the default, `optimal`) and
 prints turns/path costs; pass `ARGS="--solver adaptive"` to select one. The
 script also accepts `--solver` directly and exports a combined JSON report and
 optional Markdown table.
+Both benchmark commands exit nonzero if any selected solver fails on a map or
+misses a known target. The combined JSON report records this as `passed: false`;
+the catalog's intentionally unreachable maps therefore cause a nonzero exit.
+The table's best observed solver is selected by turns, then physical path cost.
+That comparison and a target PASS are separate from an optimality proof.
+An `optimal` mark certifies minimum makespan only, not minimum physical cost.
+Unproved results can still equal the true optimum.
+
+The JSON `planning` object is the source of the benchmark's `search_status` and
+`optimal_makespan` fields, including failed runs. A proved plan followed by a
+playback failure remains a failed run with a preserved planning certificate.
+`lower_bound` records the certified analytical bound; it can be below the
+achieved makespan when the `proof_reason` establishes optimality through CT
+search instead. For example, the flow-relaxation-gap map has bound 4 and a
+CT-proved minimum of 5 turns. Adaptive logs and benchmark reports retain that
+same bound, status, and reason.
+
 `analyze_bounds.py` reports a necessary makespan bound from path latency and
 shared-resource flow. `profile_solvers.py` records planning time, search
 expansions, and Python allocation peaks measured by `tracemalloc`.
-It returns a nonzero exit status for a failed run or missed known target.
 Benchmarking does not overwrite the normal per-map movement output.
 
 #### Benchmarking example

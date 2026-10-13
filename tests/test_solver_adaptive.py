@@ -2,10 +2,16 @@
 
 import json
 from pathlib import Path
+from unittest.mock import patch
+
+import pytest
 
 from fly_in.parser import Parser
 from fly_in.simulation import Simulation
 from fly_in.solvers.adaptive import AdaptiveSolver
+from fly_in.solvers.base import SearchTimeout
+from fly_in.solvers.lns import LNSImprover
+from fly_in.solvers.optimal import OptimalSolver
 from fly_in.solvers.prioritized import PrioritizedPlanner
 
 
@@ -42,6 +48,10 @@ def test_budget_zero_keeps_floor_and_logs_one_record(tmp_path: Path) -> None:
     assert rows[0]['initial_makespan'] == baseline.makespan
     assert rows[0]['final_path_cost'] <= baseline.cost
     assert rows[0]['elapsed_ms'] >= 0
+    assert solver.solution.optimal
+    assert solver.solution.status == rows[0]['status'] == 'optimal'
+    assert solver.solution.lower_bound == rows[0]['lower_bound'] == 4
+    assert solver.solution.reason == rows[0]['proof_reason']
 
 
 def test_small_instance_attempts_icbs_when_budget_allows(
@@ -64,3 +74,62 @@ def test_small_instance_attempts_icbs_when_budget_allows(
     assert solver.solution is not None
     assert solver.solution.optimal
     assert simulation.run().turns == 4
+
+
+@pytest.mark.parametrize('node_budget', [0, 10000])
+def test_ct_proof_and_cutoff_propagate_above_flow_bound(
+    tmp_path: Path, node_budget: int,
+) -> None:
+    """Report the actual ICBS outcome when the flow bound cannot certify it.
+
+    Args:
+        tmp_path (Path): Isolated run-log directory.
+        node_budget (int): Zero forces a cutoff; 10000 allows the proof.
+    """
+    solver = AdaptiveSolver(
+        time_budget=5, max_iter=0, node_budget=node_budget,
+        log_path=tmp_path / 'run.jsonl',
+    )
+    simulation = Simulation.from_config(
+        Parser().parse(Path(__file__).parent / 'fixtures'
+                       / 'flow_relaxation_gap.txt'), solver,
+    )
+    solver.prepare(simulation.network, simulation.drones)
+    result = solver.solution
+    assert result is not None
+    assert result.makespan == simulation.run().turns == 5
+    assert result.lower_bound == 4
+    assert result.optimal == (node_budget > 0)
+    assert result.status == ('optimal' if node_budget else 'node_limit')
+    stage = solver.stage_results['icbs']
+    log = json.loads(solver.log_path.read_text())
+    for row in (stage, log):
+        assert row['optimal_makespan'] == result.optimal
+        assert row['status'] == result.status
+        assert row['proof_reason'] == result.reason
+        assert row['lower_bound'] == result.lower_bound
+    if node_budget:
+        assert result.reason and 'CT' in result.reason
+
+
+def test_internal_ct_proof_survives_portfolio_timeout(tmp_path: Path) -> None:
+    """A later improvement cutoff does not invalidate an existing proof.
+
+    Args:
+        tmp_path (Path): Isolated run-log directory.
+    """
+    simulation = Simulation.from_config(
+        Parser().parse(Path(__file__).parent / 'fixtures'
+                       / 'flow_relaxation_gap.txt'), OptimalSolver(),
+    )
+    agents = [drone.id for drone in simulation.drones]
+    floor = OptimalSolver().solve(simulation.network, agents)
+    solver = AdaptiveSolver(time_budget=5, log_path=tmp_path / 'run.jsonl')
+    with patch.object(LNSImprover, 'solve', return_value=floor), patch.object(
+        AdaptiveSolver, '_deep_stage', side_effect=SearchTimeout,
+    ):
+        result = solver.solve(simulation.network, agents)
+    assert result.optimal and result.status == 'optimal'
+    assert result.lower_bound == floor.lower_bound == 4
+    assert result.makespan == floor.makespan == 5
+    assert result.reason == floor.reason

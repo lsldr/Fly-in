@@ -129,16 +129,8 @@ class BenchmarkRunner:
                 row.update(
                     {
                         "status": "completed",
-                        "planning": planning.record(),
                         "turns": result.turns,
                         "total_path_cost": result.metrics.total_path_cost,
-                        "search_status": getattr(
-                            getattr(solver, 'solution', None), 'status', None,
-                        ),
-                        "optimal_makespan": getattr(
-                            getattr(solver, 'solution', None),
-                            'optimal', False,
-                        ),
                         "winning_rung": getattr(solver, 'winning_rung', None),
                         "meets_target": (
                             (result.turns < target
@@ -150,12 +142,17 @@ class BenchmarkRunner:
                     }
                 )
             except (OSError, ValueError, RuntimeError) as error:
+                planning = planning or PlanningProvenance.capture(
+                    solver, error,
+                )
                 row.update({
                     "status": "failed", "error": str(error),
-                    "planning": (
-                        planning or PlanningProvenance.capture(solver, error)
-                    ).record(),
                 })
+            row.update({
+                'planning': planning.record(),
+                'search_status': planning.status,
+                'optimal_makespan': planning.optimal_makespan,
+            })
             duration = perf_counter() - started
             row["duration_seconds"] = duration
             results.append(row)
@@ -232,7 +229,8 @@ class BenchmarkApplication:
         except (OSError, ValueError) as error:
             console.print(f"Benchmark failed: {error}", markup=False)
             return 1
-        table = Table("Map", "Turns", "Path cost", "Target", "Result")
+        table = Table("Map", "Turns", "Path cost", "Target", "Result",
+                      "Plan proof")
         results = report["results"]
         assert isinstance(results, list)
         failed = False
@@ -247,6 +245,7 @@ class BenchmarkApplication:
                 str(row.get("total_path_cost", "—")),
                 str(row.get("target_turns") or "—"),
                 outcome,
+                'proved' if row['optimal_makespan'] else 'unproved',
             )
             if status == "failed":
                 console.print(str(row.get("error")), markup=False)

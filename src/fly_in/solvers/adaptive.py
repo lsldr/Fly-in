@@ -121,8 +121,10 @@ class AdaptiveSolver(ScheduledSolver):
             'priority': self._stage_row(floor),
         }
         self.profile = NetworkProfiler(network).profile(len(drone_ids))
+        best.lower_bound = self.profile.lower_bound
         if best.makespan == self.profile.lower_bound:
             best.optimal = True
+            best.status = 'optimal'
             best.reason = 'makespan equals certified flow lower bound'
         try:
             limits.check()
@@ -140,9 +142,10 @@ class AdaptiveSolver(ScheduledSolver):
                 )
                 self._consider(best, candidate, stage, label)
         except SearchTimeout:
-            best.status = 'timeout'
-            best.reason = 'portfolio improvement deadline exhausted'
-        if best.makespan == self.profile.lower_bound:
+            if not best.optimal:
+                best.status = 'timeout'
+                best.reason = 'portfolio improvement deadline exhausted'
+        if not best.optimal and best.makespan == self.profile.lower_bound:
             best.optimal = True
             best.status = 'optimal'
             best.reason = 'makespan equals certified flow lower bound'
@@ -177,6 +180,8 @@ class AdaptiveSolver(ScheduledSolver):
             'path_cost': solution.cost,
             'status': solution.status,
             'optimal_makespan': solution.optimal,
+            'proof_reason': solution.reason,
+            'lower_bound': solution.lower_bound,
             'iterations': solution.stats.iterations,
             'expanded': solution.stats.expanded,
             'nodes': solution.stats.nodes,
@@ -202,8 +207,16 @@ class AdaptiveSolver(ScheduledSolver):
         if candidate.objective < incumbent.objective:
             incumbent.paths = dict(candidate.paths)
             self.winning_rung = label
+        if candidate.lower_bound is not None:
+            incumbent.lower_bound = max(
+                incumbent.lower_bound or 0, candidate.lower_bound,
+            )
         if candidate.optimal and candidate.makespan == incumbent.makespan:
             incumbent.optimal = True
+            incumbent.status = 'optimal'
+            incumbent.reason = candidate.reason
+        elif not incumbent.optimal:
+            incumbent.status = candidate.status
             incumbent.reason = candidate.reason
 
     def _deep_stage(
@@ -268,7 +281,8 @@ class AdaptiveSolver(ScheduledSolver):
             'elapsed_ms': round(elapsed_ms, 3),
             'status': final.status,
             'optimal_makespan': final.optimal,
-            'lower_bound': profile.lower_bound if profile else None,
+            'lower_bound': final.lower_bound,
+            'proof_reason': final.reason,
             'vertices': len(network.zones),
             'edges': len(network.connections),
             'density': profile.density if profile else None,

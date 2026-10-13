@@ -166,6 +166,8 @@ def test_benchmark_unproved_floor_is_not_completed(tmp_path: Path) -> None:
     assert row['planning']['status'] == 'node_limit'
     assert row['planning']['achieved_makespan'] == 4
     assert row['planning']['optimal_makespan'] is False
+    assert row['optimal_makespan'] is False
+    assert row['search_status'] == 'node_limit'
 
 
 def test_gui_unproved_record_and_disabled_playback(
@@ -289,3 +291,5 @@ def test_execution_error_keeps_benchmark_planning_certificate(
     assert rows[0]['error'] == 'playback'
     assert rows[0]['planning']['optimal_makespan'] is True
     assert rows[0]['planning']['status'] == 'optimal'
+    assert rows[0]['optimal_makespan'] is True
+    assert rows[0]['search_status'] == 'optimal'

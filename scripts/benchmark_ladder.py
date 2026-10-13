@@ -73,12 +73,20 @@ class BenchmarkLadder:
             suffix when present; "failed" for an incomplete run.
         """
         if row.get('status') != 'completed':
+            if row.get('optimal_makespan') is True:
+                return 'failed (plan proved)'
+            if row.get('search_status') in ('timeout', 'node_limit'):
+                return f"failed ({row['search_status']}; unproved)"
             return 'failed'
         value = f"{row['turns']} / {row['total_path_cost']}"
         if row.get('optimal_makespan') is True:
             value += ' (optimal)'
         elif row.get('search_status') in ('timeout', 'node_limit'):
-            value += f" ({row['search_status']})"
+            value += f" (unproved; {row['search_status']})"
+        else:
+            value += ' (unproved)'
+        if row.get('meets_target') is False:
+            value += ' (target missed)'
         return value
 
     def run(self) -> tuple[dict[str, object], Path, Path | None]:
@@ -117,7 +125,8 @@ class BenchmarkLadder:
                 comparisons.setdefault(str(item['map']), {})[strategy] = item
         labels = [LABELS[name] for name in strategies]
         lines = [
-            '| Map | Drones | Target | ' + ' | '.join(labels) + ' | Winner |',
+            '| Map | Drones | Target | ' + ' | '.join(labels)
+            + ' | Best observed |',
             '|---|---:|---:|' + '---:|' * len(labels) + '---|',
         ]
         summary = []
@@ -125,7 +134,9 @@ class BenchmarkLadder:
             first = by_strategy[strategies[0]]
             target = first.get('target_turns')
             target_text = (
-                ('<' if name.startswith('challenger/') else '≤') + str(target)
+                ('<' if (name.startswith('challenger/')
+                         or self.map_root.name == 'challenger') else '≤')
+                + str(target)
                 if target is not None else '—'
             )
             successful = [
@@ -163,6 +174,12 @@ class BenchmarkLadder:
                 'platform': platform.platform(),
             },
             'component_reports': component_reports,
+            'passed': all(
+                row.get('status') == 'completed'
+                and row.get('meets_target') is not False
+                for by_strategy in comparisons.values()
+                for row in by_strategy.values()
+            ),
             'results': summary,
         }
         report_path = self.records_root / f'ladder_{stamp}.json'
@@ -184,8 +201,12 @@ class LadderApplication:
     """Command-line options for comparing catalog benchmark results.
     """
 
-    def run(self) -> None:
+    def run(self) -> int:
         """Parse sys.argv, run catalog benchmarks, and print the comparison.
+
+        Returns:
+            int: Zero if every run completes and meets its known target;
+                one if any run fails or misses its target.
 
         Raises:
             SystemExit: Help was requested (code 0) or arguments are invalid
@@ -204,22 +225,24 @@ class LadderApplication:
         arguments = parser.parse_args()
         if arguments.time_budget < 0:
             parser.error('--time-budget must be nonnegative')
-        BenchmarkLadder(
+        report, _, _ = BenchmarkLadder(
             arguments.map_root, arguments.records_root,
             arguments.time_budget, arguments.export_markdown,
             (arguments.solver,) if arguments.solver else STRATEGIES,
         ).run()
+        return 0 if report['passed'] else 1
 
 
 def main() -> None:
     """Run the comparative benchmark application using sys.argv.
 
     Raises:
-        SystemExit: Help was requested or command-line arguments are invalid.
+        SystemExit: Zero on success, one on failed runs or missed targets,
+            or two for invalid command-line arguments.
         ValueError: The benchmark configuration is invalid.
         OSError: A benchmark report cannot be persisted.
     """
-    LadderApplication().run()
+    raise SystemExit(LadderApplication().run())
 
 
 if __name__ == '__main__':
