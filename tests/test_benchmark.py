@@ -4,7 +4,9 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
-from fly_in.benchmark import BenchmarkRunner
+import pytest
+
+from fly_in.benchmark import BenchmarkApplication, BenchmarkRunner
 from fly_in.metrics import RunMetrics
 from fly_in.simulation import SimulationResult
 
@@ -56,3 +58,38 @@ def test_challenger_requires_strictly_better_than_45(tmp_path: Path) -> None:
     assert isinstance(rows, list)
     assert rows[0]['target_turns'] == 45
     assert rows[0]['meets_target'] is False
+
+
+def test_cli_announces_map_before_planning_and_reports_failure(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Expose the active map before a slow or failing preparation begins.
+
+    Args:
+        tmp_path (Path): Isolated catalog and report destination.
+        capsys (pytest.CaptureFixture[str]): Captured CLI output.
+    """
+    root = tmp_path / 'maps'
+    root.mkdir()
+    (root / 'slow.txt').write_text(SOURCE)
+
+    def fail_planning(*args: object) -> None:
+        """Check immediate visibility, then simulate a planning failure.
+
+        Args:
+            *args (object): Unused preparation inputs.
+        """
+        assert '[1/1] Starting slow.txt' in capsys.readouterr().out
+        raise RuntimeError('planning interrupted')
+
+    with patch('fly_in.solvers.optimal.OptimalSolver.prepare',
+               side_effect=fail_planning):
+        status = BenchmarkApplication().run([
+            '--map-root', str(root), '--records-root',
+            str(tmp_path / 'records'), '--solver', 'optimal',
+        ])
+    output = capsys.readouterr().out
+    assert status == 1
+    assert '[1/1] slow.txt: failed' in output
+    assert 'planning interrupted' in output
+    assert 'Report:' in output

@@ -43,23 +43,20 @@ LNS:	Large Neighborhood Search
 MAPF:	Multi-agent Pathfinding
 PBS:	Priority-based Search
 
-#### Default: proved minimum-turn planning (`optimal`)
+Shorthands:
 
-The default validates a feasible fleet schedule, computes a rigorous native flow
-lower bound, and certifies immediately when the two makespans match. Otherwise,
-it performs complete makespan-ordered ICBS search within the finite incumbent
-horizon. A successful result always carries a minimum makespan schedule;
-physical path cost and priority preference are secondary tie breakers.
-
-Proof mode has no default time or node cutoff (`None`). Caller deadlines and
-GUI cancellation remain effective. Explicit `--time-budget` or `--node-budget`
-limits may interrupt the proof: the CLI exits nonzero and the GUI leaves
-playback disabled, with Reset available. Any retained feasible incumbent is
-only diagnostic. Choose `--solver icbs` or another explicit budgeted strategy
-when a feasible cutoff result is desired. Complete search can be exponential and
-there is no fixed fleet-size restriction or machine-time guarantee.
+Priority floor - a baseline schedule made with priority    planning, where each drone (ordered by its ID) runs space-time A* search with the pre-calculated, cached heuristic cost from Dijsktra's algorithm.
 
 #### Feasible floor: prioritized reservation planning (`priority`)
+
+`priority` runs in this order:
+1. Build a SpaceTimeAStar engine. It runs reverse Dijkstra from the goal to calculate each hub’s shortest remaining physical travel time, ignoring other drones.
+2. Create an empty reservation table.
+3. Run A* for D1 from (start, 0). It considers connected neighbors and waiting, including moves that temporarily go farther from the goal. Dijkstra’s cached distances guide which states it examines first.
+4. A* returns D1’s earliest feasible path. Among equally early paths, it prefers less movement, then fewer non-priority hub entries.
+5. Reserve that path’s hub occupancies and link entries at their corresponding turns.
+6. Run A* for D2 with those reservations in place. D2 may need to wait or use another route.
+7. Repeat for every drone, then return the complete schedule.
 
 Drones are planned sequentially in numeric ID order. Each search operates over
 states `(hub, arrival_turn)`, considering both waiting and traversing an edge.
@@ -95,7 +92,100 @@ This rung is prioritized space-time planning. Its historical class name
 `PriorityBasedSolver` remains as an alias for `PrioritizedPlanner`; the separate
 `PBSSolver` below implements Priority-Based Search.
 
+#### Default: proved minimum-turn planning based on ICBS (`optimal`)
+
+ICBS searches for a legal schedule with the smallest makespan: the turn when
+the last drone reaches the goal. The project's `optimal` solver uses the same
+search, but requires proof before returning a schedule for execution.
+
+1. **Start the search budget.** Through the normal CLI/GUI factory, `icbs`
+   defaults to one second and 10,000 constraint-tree nodes. Its improvement
+   timer starts now. Building the initial baseline can exceed this local
+   timer; an explicit parent deadline still applies.
+2. **Obtain a feasible baseline.** Reuse and validate a supplied schedule, or
+   call `SeedPlanner(PrioritizedPlanner())`. The priority planner computes
+   static distances with reverse Dijkstra, then uses space-time A* to plan
+   D1, D2, and so on, reserving each complete path before planning the next.
+3. **Keep that schedule as the incumbent.** This is the best accepted legal
+   schedule. Its makespan `U` is an upper bound: the fleet can finish by `U`.
+4. **Calculate a lower bound `L`.** `NetworkProfiler` combines physical travel
+   distances with an optimistic capacity-flow calculation. A real schedule
+   cannot finish before `L`. If `L == U`, return the baseline as optimal.
+5. **Create the constraint-tree root.** Independently plan an earliest path for
+   every drone, with no reservations from other drones. Those paths may
+   conflict. Every search has arrival horizon `U`, because schedules slower
+   than an existing feasible schedule cannot improve makespan. The root has
+   no constraints.
+6. **Put the root in the pending priority queue.** Each node contains a set of
+   constraints and one candidate path per drone. Its bound is the maximum of
+   the drones' individually earliest arrival times. The queue sorts by that
+   bound, then physical movement cost, then insertion order.
+7. **Check whether the incumbent is already proved.** If the smallest pending
+   bound is at least `U`, no pending branch can improve the incumbent. Return
+   the incumbent as optimal. Otherwise, subject to the budget, remove the
+   smallest-bound node.
+8. **Check that node's candidate paths for conflicts.** If they are all legal
+   together, accept the schedule and return it as optimal. It is the best
+   pending bound, so no unexplored family can finish earlier.
+9. **Probe conflicting resource uses.** At a resource of capacity `c`, choose
+   a stable group of `c + 1` conflicting drones. For each member, temporarily
+   add a constraint forbidding that drone's use at that turn and replan only
+   that drone. Other paths remain candidates, not fixed reservations.
+10. **Select a conflict to resolve.** Compare each probed child's makespan
+    bound with its parent. Prefer a cardinal conflict (all children raise the
+    bound or are infeasible), then semi-cardinal (some do), then non-cardinal
+    (none do). Raising a node bound does not necessarily exceed `U`.
+11. **Try a bypass.** For a non-cardinal or semi-cardinal conflict, look through
+    its tested replacement paths. Accept one only if the changed drone keeps
+    its individual arrival and physical movement cost, and the new candidates
+    reduce conflict count or, at equal count, total excess resource usage.
+    Retain the parent's original constraints, requeue the node with the new
+    paths, and return to step 7.
+12. **Otherwise, branch.** Keep the selected conflict's feasible constrained
+    children. Skip constraint sets already seen and do not expand children
+    whose bounds cannot improve `U`. A conflict-free equal-makespan child may
+    still improve the incumbent's movement cost. Return to step 7.
+13. **Finish with proof or an explicit cutoff.** Exhausting all improving
+    branches proves the incumbent optimal. A time or node cutoff after an
+    incumbent exists returns that legal schedule with `optimal=False` and a
+    `timeout` or `node_limit` status. A cutoff before any complete incumbent
+    exists cannot return a schedule. Explicit cancellation propagates.
+14. **Prepare execution.** The scheduled-solver adapter validates the final
+    paths and their combined capacity usage, converts them to departure rows,
+    and supplies those rows to the simulation one turn at a time.
+
+`optimal` runs similar to the above `icbs`, but with unlimited budget to search
+for the optimal solution:
+1. Obtain a complete feasible baseline using SeedPlanner(PrioritizedPlanner()), following the sequence above. Call its makespan U. Because this schedule works, the true minimum cannot exceed U.
+2. Use NetworkProfiler to calculate an optimistic lower bound, L, from travel times and resource capacities.
+3. If L = U, return the baseline immediately with optimality proved. There is no need for constraint-tree search.
+4. Otherwise, independently plan an earliest-arrival path for every drone. These searches use no other drones’ reservations, so their paths may conflict. Limit every path to arrival by U.
+5. Put those paths into the root of a constraint tree. Initially, its constraint set is empty. Its bound is the latest of its individual arrival times.
+6. Select the queued tree node with the smallest bound. If even that bound is at least U, return the incumbent: nothing remaining can finish earlier.
+7. Check the selected node’s paths. If they are conflict-free, return that schedule with minimum makespan proved. Because this was the smallest-bound node, no unexplored alternative can finish earlier.
+8. If there are conflicts, probe their possible constrained replans. Prefer a cardinal conflict*, then a semi-cardinal one, then a non-cardinal one.
+9. For the selected conflict, try a bypass: adopt a replacement that preserves the changed drone’s arrival time and movement cost while reducing the total conflict count. Keep the parent constraints and return to step 6.
+10. If no bypass works, create children. Each adds a prohibition for one conflicting drone, such as “D1 cannot occupy A at turn 3.” Replan that drone under its constraints, keep promising children, and return to step 6.
+11. If no improving branches remain, return the incumbent with optimality proved.
+
+*A cardinal conflict means every child raises the current node’s bound or is infeasible. That raised bound can still be below U, so the branch may still improve the incumbent. A semi-cardinal conflict is producing some child nodes that raise the makespan bound. Non-cardinal conflict is the one where no child raises this bound.
+
+Proof mode has no default time or node cutoff (`None`). Caller deadlines and
+GUI cancellation remain effective. Explicit `--time-budget` or `--node-budget`
+limits may interrupt the proof: the CLI exits nonzero and the GUI leaves
+playback disabled, with Reset available. Any retained feasible incumbent is
+only diagnostic. Choose `--solver icbs` or another explicit budgeted strategy
+when a feasible cutoff result is desired. Complete search can be exponential and
+there is no fixed fleet-size restriction or machine-time guarantee.
+
 #### Baseline: weighted Dijkstra (`greedy`)
+
+`greedy` runs in this order:
+1. For each source hub needed, use Dijkstra to find a minimum weighted-cost route to the goal and cache its first hop.
+2. At the beginning of each simulation turn, retrieve each available drone’s cached next hop.
+3. Consider departures in the solver’s chosen order, checking link and hub capacities. It also looks ahead across two turn boundaries to accommodate restricted-zone arrivals.
+4. Accept legal departures; drones whose proposed departures cannot be accepted wait.
+5. Execute the turn and repeat until delivery, or until execution reports that progress is impossible.
 
 The baseline caches a shortest next step and downstream distance for each
 encountered source hub. Dijkstra uses entering-zone duration as its weight,
@@ -122,16 +212,38 @@ reverse Dijkstra travel-time heuristics, searches `(hub, turn)` states, checks
 per-turn hub and bidirectional link capacities, and supports agent-specific
 negative hub/link constraints. `ReservationTable` stores sparse counts and can
 remove complete paths for repair. A restricted move from state `t` claims its
-link at turn `t+1` and its destination hub at turn `t+2`.
+link at turn `t+1` and its destination hub at turn `t+2`. 
+
+Rung 0 is the [above-mentioned `priority` solver](#feasible-floor-prioritized-reservation-planning-priority).
+
+##### Rung 1 (LNS)
+`LNS` runs in this order:
+1. Take a supplied feasible schedule, or build one using PrioritizedPlanner.
+2. Reserve all its paths.
+3. Choose a small group of drones and remove their reservations.
+4. Shuffle those drones’ planning order.
+5. Replan them one at a time using A*, respecting the untouched drones’ reservations and the newly rebuilt paths.
+6. If the replacement improves makespan—or preserves makespan while reducing movement cost—keep it. Otherwise restore the old paths.
+7. Repeat until the iteration or time budget ends, then return the best accepted schedule.
+
+##### Rung 2 (PBS)
+`PBS` runs in this order:
+1. Obtain a feasible baseline to retain as the incumbent.
+2. Separately plan independent paths for all drones, initially with no priority relations.
+3. Find a conflict between drones that are not already ordered relative to one another.
+4. Create two branches: D1 has priority over D2, or D2 has priority over D1.
+5. In each branch, replan the lower-priority drone and affected descendants. Each drone avoids reservations belonging to all its higher-priority ancestors.
+6. Continue exploring priority branches depth-first. Whenever a complete conflict-free schedule improves the incumbent, retain it.
+7. Stop when the branches or budget are exhausted and return the best feasible schedule found.
 
 | Solver | Mechanism | Result guarantee |
 |---|---|---|
-| `optimal` (default) | Validated floor, rigorous bounds and complete finite-horizon makespan CT search | Success requires a minimum-turn certificate; interruption is an unproved error |
-| `priority` (Rung 0) | Numeric drone order, one pass of space-time A* | Feasible schedule on reachable supplied maps; no general optimality claim |
-| `lns` (Rung 1) | Repeatedly remove 2–5 paths and replan in shuffled order; 70% bottleneck-sharing, 30% random neighborhoods | Keeps only strictly better `(makespan, path cost)` incumbents |
-| `pbs` (Rung 2) | Depth-first search over an acyclic priority graph; replan lower agents and their descendants against all ancestors | Feasible incumbent on node/time cutoff; no optimality claim |
-| `icbs` (Rung 3) | Makespan-ordered constraint tree; classify capacity conflicts, branch on every member of a minimal overcapacity group, and bypass helpful equal-arrival alternatives | Marks makespan optimal only after a complete proof; timeout returns an uncertified feasible incumbent |
-| `adaptive` | Profile fleet/graph, run priority floor, 150 ms quick LNS, then ICBS for small instances or PBS/deeper LNS for larger ones | Never worsens the turn count |
+| `optimal` (default) | Validate upper and lower bounds of an optimal solution, then complete CT search within these bounds | Success requires a minimum-turn solution; interruption is an unproved error |
+| `priority` (Rung 0) | Numeric drone order, one pass of space-time A* | Feasible schedule on reachable supplied maps; no general optimality ensured |
+| `lns` (Rung 1) | Repeatedly remove 2–5 paths from the baseline and replan in shuffled order; 70% bottleneck-sharing, 30% random neighborhoods | Keeps only strictly better `(makespan, path cost)` incumbents |
+| `pbs` (Rung 2) | Depth-first search over an acyclic priority graph; replan lower agents and their descendants against all ancestors | Feasible incumbent on node/time cutoff; no optimality ensured |
+| `icbs` (Rung 3) | Makespan-ordered constraint tree; classify capacity conflicts, branch on every member of a minimal overcapacity group, and bypass helpful equal-arrival alternatives | Marks makespan optimal only after a complete proof; timeout returns the best feasible incumbent |
+| `adaptive` | Profile fleet/graph, run priority floor (`priority`-based schedule), 150 ms quick LNS, then ICBS for small instances or PBS/deeper LNS for larger ones | Never worsens the turn count |
 
 LNS repairs commit only a strict lexicographic improvement and rejected repairs
 restore every removed reservation. Its selection rule is this project's
@@ -159,8 +271,7 @@ stage statuses, and proof flag.
 
 Let `V` be hubs, `E` connections, `N` drones, `H` the per-agent planning
 horizon, `T` executed turns, `I` LNS iterations, and `k` agents repaired per
-iteration (`2–5`). These are conservative structural bounds rather than
-wall-clock promises:
+iteration (`2–5`):
 
 | Component | Time | Additional memory |
 |---|---|---|
@@ -181,8 +292,7 @@ caches topology-dependent results for one network; a different network clears
 those caches. Neither strategy supports changing topology during a run.
 
 There is no fixed drone-count limit, but larger fleets, horizons, and high-level
-search trees increase planning time and memory. Preparation can be cancelled in
-the GUI. `Simulation.run(max_turns=...)` offers an optional explicit execution
+search trees increase planning time and memory. `Simulation.run(max_turns=...)` offers an optional explicit execution
 limit.
 
 ### Visual representation and user experience
@@ -548,16 +658,16 @@ budget for each improvement rung. Each cell is `turns / physical path cost`.
 
 | Map | Target | R0 | LNS | PBS | ICBS | Adaptive | Greedy |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| Easy: linear | ≤6 | 4/6 | 4/6 | 4/6 | 4/6 | 4/6 | 4/6 |
-| Easy: fork | ≤8 | 4/12 | 4/12 | 4/12 | 4/12 | 4/12 | 6/12 |
-| Easy: capacity | ≤6 | 4/12 | 4/12 | 4/12 | 4/12 | 4/12 | 4/12 |
-| Medium: dead end | ≤12 | 8/20 | 8/20 | 8/20 | 8/20 | 8/20 | 8/20 |
-| Medium: circular | ≤15 | 10/30 | 10/30 | 10/30 | 10/30 | 10/30 | 10/30 |
-| Medium: priority | ≤12 | 6/22 | 6/22 | 6/22 | 6/22 | 6/22 | 8/20 |
-| Hard: maze | ≤30 | 13/48 | 13/48 | 13/48 | 13/48 | 13/48 | 13/48 |
-| Hard: capacity | ≤35 | 16/60 | 16/60 | 16/60 | 16/60 | 16/60 | 16/60 |
-| Hard: ultimate | ≤45 | 26/180 | 26/180 | 26/180 | 26/180 | 26/180 | 26/180 |
-| Challenger | <45 | 43/475 | 43/475 | 43/475 | 43/475 | 43/475 | 67/475 |
+| Easy: linear | 4 | 4/6 | 4/6 | 4/6 | 4/6 | 4/6 | 4/6 |
+| Easy: fork | 4 | 4/12 | 4/12 | 4/12 | 4/12 | 4/12 | 6/12 |
+| Easy: capacity | 4 | 4/12 | 4/12 | 4/12 | 4/12 | 4/12 | 4/12 |
+| Medium: dead end | 8 | 8/20 | 8/20 | 8/20 | 8/20 | 8/20 | 8/20 |
+| Medium: circular | 10 | 10/30 | 10/30 | 10/30 | 10/30 | 10/30 | 10/30 |
+| Medium: priority | 6 | 6/22 | 6/22 | 6/22 | 6/22 | 6/22 | 8/20 |
+| Hard: maze | 13 | 13/48 | 13/48 | 13/48 | 13/48 | 13/48 | 13/48 |
+| Hard: capacity | 16 | 16/60 | 16/60 | 16/60 | 16/60 | 16/60 | 16/60 |
+| Hard: ultimate | 26 | 26/180 | 26/180 | 26/180 | 26/180 | 26/180 | 26/180 |
+| Challenger | 43 | 43/475 | 43/475 | 43/475 | 43/475 | 43/475 | 67/475 |
 
 The flow analyzer returns a 43-turn lower bound for Challenger; its valid
 43-turn schedule proves optimal makespan there. It returns bounds equal to the

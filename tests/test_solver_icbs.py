@@ -161,6 +161,37 @@ def test_bypass_replaces_paths_without_adding_constraints() -> None:
     assert seed.makespan == 4
 
 
+def test_bypass_reduces_excess_before_a_conflict_disappears() -> None:
+    """A partial reroute from five users to four helps a capacity-three hub."""
+    network = _network(branches=2, capacity=3, link_capacity=3)
+    engine = SpaceTimeAStar(network)
+    paths = {}
+    for index in range(5):
+        agent = f'D{index+1}'
+        path = engine.find_path(agent)
+        assert path is not None
+        paths[agent] = path
+    node = _Node(frozenset(), paths)
+    conflicts = ConflictDetector(network).find(paths)
+    assert all(item.excess == 2 for item in conflicts)
+    assert all(len(item.agents) == 4 for item in conflicts)
+    split = ICBSSolver()._select_split(
+        node, conflicts, engine, 4, SearchBudget(),
+    )
+    bypass = ICBSSolver._bypass(
+        network, node, conflicts, split, SearchBudget(),
+    )
+    assert bypass is not None
+    remaining = ConflictDetector(network).find(bypass.paths)
+    assert len(remaining) == len(conflicts)
+    assert all(item.excess == 1 for item in remaining)
+    assert bypass.constraints == node.constraints
+    for agent, path in bypass.paths.items():
+        assert (path.arrival, path.cost) == (
+            paths[agent].arrival, paths[agent].cost,
+        )
+
+
 def test_cardinal_split_precedes_earlier_noncardinal_conflict() -> None:
     """A mandatory shared final link wins over an avoidable earlier link."""
     network = _network(branches=2)

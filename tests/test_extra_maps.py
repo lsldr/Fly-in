@@ -173,6 +173,16 @@ def test_mass_priority_crossing_has_constructive_three_turn_optimum() -> None:
     assert solved.optimal and solved.makespan == solved.lower_bound == 3
 
 
+def test_mass_priority_crossing_solves_without_a_supplied_witness() -> None:
+    """Avoid symmetric CT explosion while proving and replaying three turns."""
+    config = Parser().parse(EXTRA / HARD_CASE.filename)
+    solver = OptimalSolver(node_budget=200)
+    result = Simulation.from_config(config, solver).run(max_turns=4)
+    assert solver.solution is not None and solver.solution.optimal
+    assert result.turns == solver.solution.lower_bound == 3
+    assert replay(config, result.history).cost == 300
+
+
 def test_mass_priority_crossing_cutoff_keeps_proof_honest() -> None:
     """Check a node cutoff leaves execution untouched and proof explicit.
 

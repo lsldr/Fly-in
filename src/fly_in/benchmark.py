@@ -7,7 +7,7 @@ import json
 import platform
 from pathlib import Path
 from time import perf_counter
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 
 from rich.console import Console
 from rich.table import Table
@@ -65,8 +65,14 @@ class BenchmarkRunner:
         self.records_root = Path(records_root)
         self.solver_options = dict(solver_options or {})
 
-    def run(self) -> tuple[dict[str, object], Path]:
+    def run(
+        self, on_progress: Callable[[str], None] | None = None,
+    ) -> tuple[dict[str, object], Path]:
         """Run each map once and retain individual failures in the report.
+
+        Args:
+            on_progress (Callable[[str], None] | None): Optional listener for
+                map-start and map-finish messages, including failed maps.
 
         Returns:
             tuple[dict[str, object], Path]: Report data and its saved path.
@@ -89,8 +95,10 @@ class BenchmarkRunner:
         if not paths:
             raise ValueError(f"no .txt files found under {root}")
         results: list[dict[str, object]] = []
-        for path in paths:
+        for index, path in enumerate(paths, 1):
             relative = path.relative_to(root).as_posix()
+            if on_progress is not None:
+                on_progress(f'[{index}/{len(paths)}] Starting {relative}')
             target = TARGETS.get(relative)
             if target is None and root.name in {
                 'easy', 'medium', 'hard', 'challenger',
@@ -148,8 +156,14 @@ class BenchmarkRunner:
                         planning or PlanningProvenance.capture(solver, error)
                     ).record(),
                 })
-            row["duration_seconds"] = perf_counter() - started
+            duration = perf_counter() - started
+            row["duration_seconds"] = duration
             results.append(row)
+            if on_progress is not None:
+                on_progress(
+                    f'[{index}/{len(paths)}] {relative}: '
+                    f'{row["status"]} ({duration:.3f}s)'
+                )
         timestamp = datetime.now(timezone.utc)
         report: dict[str, object] = {
             "schema_version": 1,
@@ -197,6 +211,15 @@ class BenchmarkApplication:
         parser.add_argument('--node-budget', type=int, default=None)
         args = parser.parse_args(argv)
         console = Console()
+
+        def progress(message: str) -> None:
+            """Print each map's progress before waiting for the next result.
+
+            Args:
+                message (str): Plain-text benchmark progress message.
+            """
+            console.print(message, markup=False)
+
         try:
             report, path = BenchmarkRunner(
                 args.map_root, args.solver, args.records_root,
@@ -205,7 +228,7 @@ class BenchmarkApplication:
                     ('max_iter', args.max_iter),
                     ('node_budget', args.node_budget),
                 ) if value is not None},
-            ).run()
+            ).run(on_progress=progress)
         except (OSError, ValueError) as error:
             console.print(f"Benchmark failed: {error}", markup=False)
             return 1

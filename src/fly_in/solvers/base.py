@@ -558,6 +558,8 @@ class Conflict:
         agents (tuple[str, ...]): First capacity-plus-one users in stable
             order.
         capacity (int): Maximum concurrent use of the resource.
+        excess (int): Total users above capacity, including users outside
+            the minimal violating set used for branching.
     """
 
     kind: ResourceKind
@@ -565,6 +567,7 @@ class Conflict:
     time: int
     agents: tuple[str, ...]
     capacity: int
+    excess: int = 1
 
     def constraint(self, agent: str) -> Constraint:
         """Forbid this resource use for one involved agent.
@@ -618,6 +621,7 @@ class ConflictDetector:
             if len(agents) > capacity:
                 conflicts.append(Conflict(
                     kind, name, turn, tuple(agents[:capacity+1]), capacity,
+                    len(agents) - capacity,
                 ))
         return sorted(conflicts, key=lambda item: (
             item.time, item.kind, item.resource, item.agents,

@@ -383,8 +383,9 @@ class ICBSSolver(ScheduledSolver):
             budget (SearchBudget): Cooperative interruption controls.
 
         Returns:
-            _Node | None: Parent-constraint node with fewer conflicts, or None
-                when no helpful equal-arrival, equal-cost path exists.
+            _Node | None: Parent-constraint node with fewer conflicts or,
+                at equal conflict count, less total excess resource usage.
+                None when no helpful equal-arrival, equal-cost path exists.
 
         Raises:
             PlanningCancelled: If cancellation is requested.
@@ -392,6 +393,7 @@ class ICBSSolver(ScheduledSolver):
         """
         if split.classification == 'cardinal':
             return None
+        original = len(conflicts), sum(item.excess for item in conflicts)
         for child in split.children:
             budget.check()
             changed = next(agent for agent in split.conflict.agents
@@ -400,7 +402,11 @@ class ICBSSolver(ScheduledSolver):
                 continue
             if child.paths[changed].cost != node.paths[changed].cost:
                 continue
-            if (len(ConflictDetector(network).find(child.paths))
-                    < len(conflicts)):
+            remaining = ConflictDetector(network).find(child.paths)
+            score = len(remaining), sum(item.excess for item in remaining)
+            # Moving one drone off a heavily overloaded resource may leave
+            # its conflict present. Strictly reducing excess still makes
+            # progress, without restricting the parent's solution family.
+            if score < original:
                 return _Node(node.constraints, child.paths)
         return None
