@@ -40,8 +40,7 @@ def test_supplied_target_for_each_rung(
     assert isinstance(solver, PreparableSolver)
     solver.prepare(simulation.network, simulation.drones)
     result = simulation.run()
-    assert (result.turns < target if relative.startswith('challenger/')
-            else result.turns <= target)
+    assert result.turns == target
     assert isinstance(solver, ScheduledSolver)
     assert solver.solution is not None
     assert result.metrics.total_path_cost == solver.solution.cost

@@ -40,24 +40,34 @@ def test_benchmark_discovers_only_text_and_records_failures(
     assert json.loads(path.read_text()) == report
 
 
-def test_challenger_requires_strictly_better_than_45(tmp_path: Path) -> None:
-    """Require a challenger result strictly below its reference target.
+@pytest.mark.parametrize("turns,meets_target", [
+    (43, True), (44, False), (45, False),
+])
+@pytest.mark.parametrize("category_root", [False, True])
+def test_challenger_requires_version_two_optimum(
+    tmp_path: Path, turns: int, meets_target: bool, category_root: bool,
+) -> None:
+    """Version two requires 43 turns from either catalog entry root.
 
     Args:
         tmp_path (Path): Isolated catalog and report root.
+        turns (int): Achieved turn count to assess against the v2 target.
+        meets_target (bool): Whether the result meets the required optimum.
+        category_root (bool): Whether discovery starts inside challenger.
     """
     root = tmp_path / 'maps'
     (root / 'challenger').mkdir(parents=True)
     (root / 'challenger' / '01_the_impossible_dream.txt').write_text(SOURCE)
-    result = SimulationResult(45, [], RunMetrics(45, 1, 1 / 45, 1))
+    result = SimulationResult(turns, [], RunMetrics(turns, 1, 1 / turns, 1))
     with patch('fly_in.benchmark.Simulation.run', return_value=result):
         report, _ = BenchmarkRunner(
-            root, records_root=tmp_path / 'records',
+            root / 'challenger' if category_root else root,
+            records_root=tmp_path / 'records',
         ).run()
     rows = report['results']
     assert isinstance(rows, list)
-    assert rows[0]['target_turns'] == 45
-    assert rows[0]['meets_target'] is False
+    assert rows[0]['target_turns'] == 43
+    assert rows[0]['meets_target'] is meets_target
 
 
 def test_cli_announces_map_before_planning_and_reports_failure(

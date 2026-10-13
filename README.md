@@ -416,9 +416,9 @@ flowchart LR
    that are harder to follow in a text stream with each chunk describing a turn.
 7. **Does it meet the benchmarks?** The default passes all ten supplied maps,
    including the optional challenger. The table below gives reproducible results.
-8. **How does it compare to reference targets?** It beats all nine mandatory
-   turn targets, including circular loop at 10 versus 15, and reaches 43 on
-   the challenger against the strict target of 45 or less turns.
+8. **How does it compare to reference targets?** The default achieves the
+   known minimum on every supplied map, including circular loop at 10 turns.
+   Version 2 requires the challenger optimum of 43 turns for the bonus.
 9. **What optimizations were implemented?** Indexed connections, cached static
    greedy routes, a reusable priority schedule, sparse reservation lookup,
    reachability checking, and correct predecessor/tie handling. Removing
@@ -640,7 +640,8 @@ QT_QPA_PLATFORM=offscreen uv run pytest -q
 The benchmark command defaults to `optimal`, supports every
 solver and its time/iteration/node controls,
 `--map-root`, `--records-root`, and `--help`. It runs each `.txt` map, reports
-turns/path cost against known targets, and saves a timestamped JSON report with
+turns/path cost against the known minimum-turn targets for the supplied maps,
+and saves a timestamped JSON report with
 environment and map fingerprints. `make benchmark` runs the six comparison
 strategies (excluding the default, `optimal`) and
 prints turns/path costs; pass `ARGS="--solver adaptive"` to select one. The
@@ -773,4 +774,4 @@ laptop.
 - Expanding the docs with sections other than the summary at their top
 - Test scripts' code
 - GUI implementation (QT-based GUI)
-- Map profiling and benchmarking code (checking least possible turns for a valid solution)
+- Map profiling, benchmarking, and map bounds analysis (checking least possible turns for a valid solution)

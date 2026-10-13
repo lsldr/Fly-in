@@ -26,6 +26,7 @@ class MapGraphicsView(QGraphicsView):
     Attributes:
         NODE_RADIUS (int): Base node radius in scene units.
         GRID_STEP (int): Scene distance for one map coordinate unit.
+        MAX_SCENE_SPAN (int): Display extent used to bound extreme coordinates.
         drone_items (dict[str, QuadcopterItem]): Persistent drone graphics.
         hub_items (dict[str, HubItem]): Hub graphics keyed by zone name.
         link_items (dict[str, LinkItem]): Links keyed by canonical identifier.
@@ -34,6 +35,7 @@ class MapGraphicsView(QGraphicsView):
     object_selected = Signal(str, str)
     NODE_RADIUS = 17
     GRID_STEP = 130
+    MAX_SCENE_SPAN = 10 ** 15
 
     def __init__(self, parent: QWidget | None = None) -> None:
         """Initialize the scene, selections, and stable slot cache.
@@ -76,22 +78,16 @@ class MapGraphicsView(QGraphicsView):
         """Build the topology and fit its complete item bounds.
 
         Map coordinates are scaled by ``GRID_STEP`` scene units and the
-        vertical axis is inverted so increasing map y points upward.
+        vertical axis is inverted so increasing map y points upward. Extreme
+        integer spans are uniformly scaled into finite Qt geometry.
 
         Args:
             config (MapConfig): Map topology and visual properties to display.
         """
         self.clear_map()
         self._config = config
-        specs = [config.start, *config.zones, config.end]
-        minimum_x = min(zone.x for zone in specs)
-        maximum_y = max(zone.y for zone in specs)
-        positions = {
-            zone.name: QPointF(
-                (zone.x - minimum_x) * self.GRID_STEP,
-                (maximum_y - zone.y) * self.GRID_STEP,
-            ) for zone in specs
-        }
+        specs: list[ZoneSpec] = [config.start, *config.zones, config.end]
+        positions = self._layout_positions(specs)
         self._zone_positions = positions
         for route in config.connections:
             first, last = positions[route.from_hub], positions[route.to_hub]
@@ -120,6 +116,39 @@ class MapGraphicsView(QGraphicsView):
             ))
         self._update_bounds()
         self.fit_map()
+
+    @classmethod
+    def _layout_positions(cls, specs: list[ZoneSpec]) -> dict[str, QPointF]:
+        """Translate coordinates and bound extreme spans before float use.
+
+        Dividing integer relative offsets by their common span yields
+        bounded ratios even when individual coordinates exceed float range.
+        A common scale preserves aspect ratio and ordinary layouts retain
+        their original GRID_STEP spacing.
+
+        Args:
+            specs (list[ZoneSpec]): Nonempty map zone specifications.
+
+        Returns:
+            dict[str, QPointF]: Finite scene positions indexed by zone name.
+        """
+        minimum_x = min(zone.x for zone in specs)
+        maximum_y = max(zone.y for zone in specs)
+        span = max(max(zone.x for zone in specs) - minimum_x,
+                   maximum_y - min(zone.y for zone in specs))
+        if span * cls.GRID_STEP > cls.MAX_SCENE_SPAN:
+            return {
+                zone.name: QPointF(
+                    (zone.x - minimum_x) / span * cls.MAX_SCENE_SPAN,
+                    (maximum_y - zone.y) / span * cls.MAX_SCENE_SPAN,
+                ) for zone in specs
+            }
+        return {
+            zone.name: QPointF(
+                (zone.x - minimum_x) * cls.GRID_STEP,
+                (maximum_y - zone.y) * cls.GRID_STEP,
+            ) for zone in specs
+        }
 
     def _label(
         self, text: str, position: QPointF, color: str,

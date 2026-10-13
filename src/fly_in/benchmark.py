@@ -21,17 +21,18 @@ from fly_in.provenance import PlanningProvenance
 from fly_in.simulation import Simulation
 from fly_in.solvers.protocol import PreparableSolver, Solver
 
+# Version 2 compares the supplied maps with their established minima.
 TARGETS = {
-    "easy/01_linear_path.txt": 6,
-    "easy/02_simple_fork.txt": 8,
-    "easy/03_basic_capacity.txt": 6,
-    "medium/01_dead_end_trap.txt": 12,
-    "medium/02_circular_loop.txt": 15,
-    "medium/03_priority_puzzle.txt": 12,
-    "hard/01_maze_nightmare.txt": 30,
-    "hard/02_capacity_hell.txt": 35,
-    "hard/03_ultimate_challenge.txt": 45,
-    "challenger/01_the_impossible_dream.txt": 45,
+    "easy/01_linear_path.txt": 4,
+    "easy/02_simple_fork.txt": 4,
+    "easy/03_basic_capacity.txt": 4,
+    "medium/01_dead_end_trap.txt": 8,
+    "medium/02_circular_loop.txt": 10,
+    "medium/03_priority_puzzle.txt": 6,
+    "hard/01_maze_nightmare.txt": 13,
+    "hard/02_capacity_hell.txt": 16,
+    "hard/03_ultimate_challenge.txt": 26,
+    "challenger/01_the_impossible_dream.txt": 43,
 }
 
 
@@ -133,10 +134,7 @@ class BenchmarkRunner:
                         "total_path_cost": result.metrics.total_path_cost,
                         "winning_rung": getattr(solver, 'winning_rung', None),
                         "meets_target": (
-                            (result.turns < target
-                             if (relative.startswith("challenger/")
-                                 or root.name == 'challenger')
-                             else result.turns <= target)
+                            result.turns <= target
                             if target is not None else None
                         ),
                     }
