@@ -236,6 +236,8 @@ Rung 0 is the [above-mentioned `priority` solver](#feasible-floor-prioritized-re
 6. Continue exploring priority branches depth-first. Whenever a complete conflict-free schedule improves the incumbent, retain it.
 7. Stop when the branches or budget are exhausted and return the best feasible schedule found.
 
+Rung 3 is the [`icbs` solver described above](#default-proved-minimum-turn-planning-based-on-icbs-optimal)
+
 | Solver | Mechanism | Result guarantee |
 |---|---|---|
 | `optimal` (default) | Validate upper and lower bounds of an optimal solution, then complete CT search within these bounds | Success requires a minimum-turn solution; interruption is an unproved error |
