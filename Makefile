@@ -4,7 +4,7 @@ install:
 	@uv sync
 
 run:
-	@uv run python -m fly_in $(ARGS)
+	@LD_LIBRARY_PATH="$(QT_EXTRA_LIB)$${LD_LIBRARY_PATH:+:$$LD_LIBRARY_PATH}" uv run python -m fly_in $(ARGS)
 
 debug:
 	@uv run python -m pdb -m fly_in $(ARGS)

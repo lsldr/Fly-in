@@ -30,7 +30,10 @@ class SolverProfiler:
     """
 
     def __init__(
-        self, map_path: Path, strategies: list[str], time_budget: float,
+        self,
+        map_path: Path,
+        strategies: list[str],
+        time_budget: float,
         records_root: Path,
     ) -> None:
         """Capture the profiling inputs without parsing or executing the map.
@@ -70,60 +73,74 @@ class SolverProfiler:
         results = []
         for name in self.strategies:
             solver = SolverFactory(
-                self.map_path.stem, self.records_root,
-            ).create(name, {'time_budget': self.time_budget})
+                self.map_path.stem,
+                self.records_root,
+            ).create(name, {"time_budget": self.time_budget})
             simulation = Simulation.from_config(config, solver)
             tracemalloc.start()
             started = perf_counter()
             planning: PlanningProvenance | None = None
-            row: dict[str, object] = {'solver': name}
+            row: dict[str, object] = {"solver": name}
             try:
                 try:
                     if isinstance(solver, PreparableSolver):
                         solver.prepare(simulation.network, simulation.drones)
                 finally:
-                    row['planning_ms'] = round(
-                        (perf_counter() - started) * 1000, 3,
+                    row["planning_ms"] = round(
+                        (perf_counter() - started) * 1000,
+                        3,
                     )
                     _, peak = tracemalloc.get_traced_memory()
-                    row['tracemalloc_peak_bytes'] = peak
+                    row["tracemalloc_peak_bytes"] = peak
                     tracemalloc.stop()
                 planning = PlanningProvenance.capture(solver)
                 result = simulation.run()
-                row.update({
-                    'status': 'completed',
-                    'turns': result.turns,
-                    'physical_path_cost': result.metrics.total_path_cost,
-                })
+                row.update(
+                    {
+                        "status": "completed",
+                        "turns": result.turns,
+                        "physical_path_cost": result.metrics.total_path_cost,
+                    }
+                )
             except (RuntimeError, ValueError, OSError) as error:
-                row.update({'status': 'failed', 'error': str(error)})
+                row.update({"status": "failed", "error": str(error)})
                 if planning is None:
                     planning = PlanningProvenance.capture(solver, error)
-            solution = solver.solution if isinstance(
-                solver, ScheduledSolver,
-            ) else None
-            row.update({
-                'planning': planning.record(),
-                'expanded': solution.stats.expanded if solution else None,
-                'high_level_nodes': solution.stats.nodes if solution else None,
-                'iterations': solution.stats.iterations if solution else None,
-            })
+            solution = (
+                solver.solution
+                if isinstance(
+                    solver,
+                    ScheduledSolver,
+                )
+                else None
+            )
+            row.update(
+                {
+                    "planning": planning.record(),
+                    "expanded": solution.stats.expanded if solution else None,
+                    "high_level_nodes": (
+                        solution.stats.nodes if solution else None
+                    ),
+                    "iterations": (
+                        solution.stats.iterations if solution else None
+                    ),
+                }
+            )
             results.append(row)
         return {
-            'schema_version': 1,
-            'timestamp': datetime.now(timezone.utc).isoformat(),
-            'map_path': str(self.map_path.resolve()),
-            'environment': {
-                'python': platform.python_version(),
-                'platform': platform.platform(),
+            "schema_version": 1,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "map_path": str(self.map_path.resolve()),
+            "environment": {
+                "python": platform.python_version(),
+                "platform": platform.platform(),
             },
-            'results': results,
+            "results": results,
         }
 
 
 class ProfilingApplication:
-    """Command-line options and report persistence for solver profiling.
-    """
+    """Command-line options and report persistence for solver profiling."""
 
     def run(self) -> None:
         """Profile the command-line map and save a timestamped JSON report.
@@ -139,28 +156,32 @@ class ProfilingApplication:
             OSError: The report cannot be persisted.
         """
         parser = argparse.ArgumentParser(description=__doc__)
-        parser.add_argument('map', type=Path)
+        parser.add_argument("map", type=Path)
         parser.add_argument(
-            '--solver', action='append', choices=SOLVER_CHOICES,
+            "--solver",
+            action="append",
+            choices=SOLVER_CHOICES,
         )
-        parser.add_argument('--time-budget', type=float, default=1.0)
-        parser.add_argument('--records-root', type=Path,
-                            default=Path('records'))
+        parser.add_argument("--time-budget", type=float, default=1.0)
+        parser.add_argument(
+            "--records-root", type=Path, default=Path("records")
+        )
         arguments = parser.parse_args()
         if arguments.time_budget < 0:
-            parser.error('--time-budget must be nonnegative')
+            parser.error("--time-budget must be nonnegative")
         report = SolverProfiler(
             arguments.map,
-            arguments.solver or ['priority', 'lns', 'pbs', 'icbs', 'adaptive'],
-            arguments.time_budget, arguments.records_root,
+            arguments.solver or ["priority", "lns", "pbs", "icbs", "adaptive"],
+            arguments.time_budget,
+            arguments.records_root,
         ).measure()
-        stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
-        destination = arguments.records_root / f'profile_{stamp}.json'
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        destination = arguments.records_root / f"profile_{stamp}.json"
         AtomicFileWriter(destination).write(
-            json.dumps(report, indent=2) + '\n'
+            json.dumps(report, indent=2) + "\n"
         )
         print(json.dumps(report, indent=2))
-        print(f'Report: {destination}')
+        print(f"Report: {destination}")
 
 
 def main() -> None:
@@ -175,5 +196,5 @@ def main() -> None:
     ProfilingApplication().run()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

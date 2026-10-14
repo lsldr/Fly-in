@@ -204,6 +204,11 @@ class CliApplication:
             help="terminal detail level",
         )
         parser.add_argument(
+            "--capacity-info",
+            action="store_true",
+            help="display capacity information",
+        )
+        parser.add_argument(
             "--time-budget",
             type=float,
             default=None,
@@ -348,6 +353,8 @@ class CliApplication:
             )
             if arguments.display == "visual":
                 visualizer.render_turn(simulation, [])
+            if arguments.capacity_info:
+                visualizer.display_capacity_info(simulation)
             result = simulation.run(on_turn=visualizer.render_turn)
         except (RuntimeError, ValueError, KeyboardInterrupt) as error:
             status: Literal["cancelled", "failed"] = (

@@ -27,7 +27,9 @@ class TerminalVisualizer:
     }
 
     def __init__(
-        self, config: MapConfig, no_color: bool = False,
+        self,
+        config: MapConfig,
+        no_color: bool = False,
         display: str = "visual",
     ) -> None:
         """Create a renderer using visual properties from ``config``.
@@ -69,7 +71,7 @@ class TerminalVisualizer:
                 soft_wrap=False,
             )
             return
-        movement_line = Text()
+        movement_line = Text(f"\nTurn {simulation.turn}:\n", style="bold")
         for index, movement in enumerate(moves):
             if index:
                 movement_line.append(" ")
@@ -87,7 +89,8 @@ class TerminalVisualizer:
             self.console.print(
                 f"Turn {simulation.turn} · delivered "
                 f"{delivered}/{len(simulation.drones)} · "
-                f"in transit {transit}", highlight=False,
+                f"in transit {transit}",
+                highlight=False,
             )
 
     def _movement_color(self, target: str) -> str:
@@ -106,8 +109,7 @@ class TerminalVisualizer:
                 (
                     item
                     for item in self.config.connections
-                    if "-".join(sorted((item.from_hub, item.to_hub)))
-                    == target
+                    if "-".join(sorted((item.from_hub, item.to_hub))) == target
                 ),
                 None,
             )
@@ -144,7 +146,7 @@ class TerminalVisualizer:
             zone_name = drone.current_zone.name
             occupancy[zone_name] = occupancy.get(zone_name, 0) + 1
 
-        line = Text(f"Turn {simulation.turn} · Zones: ", style="dim")
+        line = Text(f"\nHubs: ", style="dim")
         for index, zone in enumerate(self._zones.values()):
             if index:
                 line.append(" | ", style="dim")
@@ -153,10 +155,10 @@ class TerminalVisualizer:
                 capacity = str(zone.max_drones)
             else:
                 capacity = "∞"
-            line.append(zone.name, style=self._zone_color(zone))
-            line.append(f" {count}/{capacity}", style="dim")
+            line.append(f"Zone: {zone.name}", style=self._zone_color(zone))
+            line.append(f" {count}/{capacity} drones", style="dim")
 
-        line.append("    Links: ", style="dim")
+        line.append("\nLinks: ", style="dim")
         connections = {
             connection.identifier(): connection
             for neighbors in simulation.network.adjacency.values()
@@ -165,10 +167,10 @@ class TerminalVisualizer:
         for index, connection in enumerate(connections.values()):
             if index:
                 line.append(" | ", style="dim")
-            line.append(connection.identifier(), style="cyan")
+            line.append(f"Connection: {connection.identifier()}", style="cyan")
             line.append(
                 f" {connection.current_traffic}/"
-                f"{connection.max_link_capacity}",
+                f"{connection.max_link_capacity} capacity used",
                 style="dim",
             )
         return line
